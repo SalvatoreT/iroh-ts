@@ -1,9 +1,17 @@
 {
-  "name": "iroh",
+  "name": "@salvatoret/iroh",
   "version": "0.1.0",
   "description": "TypeScript bindings for iroh, the modular networking stack",
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SalvatoreT/iroh-ts"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "main": "./dist/node.js",
   "types": "./dist/node.d.ts",
   "exports": {

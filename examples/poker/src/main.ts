@@ -1,4 +1,4 @@
-import { Endpoint, EndpointAddr, type Connection } from "iroh";
+import { Endpoint, EndpointAddr, type Connection } from "@salvatoret/iroh";
 import "poker-card-element";
 import { PokerGame } from "./game.js";
 import type { Card, HostMessage, PlayerMessage } from "./protocol.js";

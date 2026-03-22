@@ -10,7 +10,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "iroh": "workspace:*",
+    "@salvatoret/iroh": "workspace:*",
     "poker-card-element": "^0.1.1"
   },
   "devDependencies": {

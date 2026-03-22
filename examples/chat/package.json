@@ -10,7 +10,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "iroh": "workspace:*"
+    "@salvatoret/iroh": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

@@ -17,7 +17,7 @@ importers:
 
   examples/chat:
     dependencies:
-      iroh:
+      '@salvatoret/iroh':
         specifier: workspace:*
         version: link:../..
     devDependencies:
@@ -39,7 +39,7 @@ importers:
 
   examples/poker:
     dependencies:
-      iroh:
+      '@salvatoret/iroh':
         specifier: workspace:*
         version: link:../..
       poker-card-element:

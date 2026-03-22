@@ -1,4 +1,4 @@
-import { Endpoint, EndpointAddr, type SendStream, type RecvStream } from "iroh";
+import { Endpoint, EndpointAddr, type SendStream, type RecvStream } from "@salvatoret/iroh";
 
 const ALPN = new TextEncoder().encode("iroh-chat/1");
 const encoder = new TextEncoder();

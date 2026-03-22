@@ -7,11 +7,11 @@ Built on iroh v0.97 (Rust → WASM via `wasm-pack`). One `npm install`, zero nat
 ## Install
 
 ```bash
-pnpm add iroh
+pnpm add @salvatoret/iroh
 # or
-npm install iroh
+npm install @salvatoret/iroh
 # or
-yarn add iroh
+yarn add @salvatoret/iroh
 ```
 
 ## Quick Start
@@ -19,7 +19,7 @@ yarn add iroh
 Two nodes connect and exchange a message:
 
 ```ts
-import { Endpoint } from "iroh";
+import { Endpoint } from "@salvatoret/iroh";
 
 const ALPN = new TextEncoder().encode("my-app/1");
 
