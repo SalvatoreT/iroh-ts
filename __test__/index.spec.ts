@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Endpoint, EndpointAddr } from "../crate/pkg/iroh_ts.js";
+import { Endpoint, EndpointAddr, BlobStore } from "../crate/pkg/iroh_ts.js";
 
 describe("EndpointAddr", () => {
   it("should create from endpoint ID and round-trip", () => {
@@ -104,4 +104,44 @@ describe("Connections", () => {
     ep1.free();
     ep2.free();
   }, 30000);
+});
+
+describe("BlobStore", () => {
+  it("should add bytes and read them back by hash", async () => {
+    const store = new BlobStore();
+    const data = new TextEncoder().encode("hello blobs");
+    const hash = await store.addBytes(data);
+
+    expect(hash).toBeDefined();
+    expect(typeof hash).toBe("string");
+    expect(hash.length).toBe(64); // BLAKE3 hash is 32 bytes = 64 hex chars
+
+    const retrieved = await store.getBytes(hash);
+    expect(new TextDecoder().decode(retrieved)).toBe("hello blobs");
+    store.free();
+  });
+
+  it("should report has() correctly", async () => {
+    const store = new BlobStore();
+    const hash = await store.addBytes(new TextEncoder().encode("test data"));
+
+    expect(await store.has(hash)).toBe(true);
+    expect(
+      await store.has(
+        "0000000000000000000000000000000000000000000000000000000000000001",
+      ),
+    ).toBe(false);
+    store.free();
+  });
+
+  it("should list stored blobs", async () => {
+    const store = new BlobStore();
+    const hash1 = await store.addBytes(new TextEncoder().encode("blob one"));
+    const hash2 = await store.addBytes(new TextEncoder().encode("blob two"));
+
+    const hashes = await store.list();
+    expect(hashes).toContain(hash1);
+    expect(hashes).toContain(hash2);
+    store.free();
+  });
 });

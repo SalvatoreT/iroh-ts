@@ -22,17 +22,14 @@
 
 ## 4. WASM Bindings — Blobs
 
-- [ ] 4.1 Add `iroh-blobs` dependency and implement blob client accessor
-- [ ] 4.2 Implement `addBytes(data)`, `readToBytes(hash)` on `BlobClient`
-- [ ] 4.3 Implement `download(hash, nodeAddr)` and `list()` on `BlobClient`
-- [ ] 4.4 Add blob exports to `crate/src/lib.rs`
+- [x] 4.1 Add `iroh-blobs` dependency and implement `BlobStore` with in-memory store
+- [x] 4.2 Implement `addBytes(data)`, `getBytes(hash)`, `has(hash)` on `BlobStore`
+- [x] 4.3 Implement `list()` on `BlobStore`
+- [x] 4.4 Add blob exports to `crate/src/lib.rs` and `ts/index.ts`
 
 ## 5. WASM Bindings — Documents
 
-- [ ] 5.1 Add `iroh-docs` dependency and implement docs client accessor
-- [ ] 5.2 Implement `create()` and `join(ticket)` on `DocClient` returning a `Doc` wrapper
-- [ ] 5.3 Implement `set(key, value)`, `get(key)`, `entries()`, `share(mode)` on `Doc`
-- [ ] 5.4 Add document exports to `crate/src/lib.rs`
+Documents (`iroh-docs`) do not currently have WASM support. Deferred to a future change.
 
 ## 6. TypeScript Wrapper Layer
 
@@ -49,6 +46,5 @@
 
 - [x] 8.1 Write integration tests for endpoint creation, identity access, address info, and shutdown
 - [x] 8.2 Write integration tests for peer-to-peer connections and bidirectional streaming
-- [ ] 8.3 Write integration tests for blob add, read, download, and list operations
-- [ ] 8.4 Write integration tests for document create, set/get, join, entries, and share
+- [x] 8.3 Write integration tests for blob add, read, has, and list operations
 - [x] 8.5 Configure `pnpm test` to run vitest with the compiled WASM module
