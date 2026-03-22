@@ -1,0 +1,5 @@
+# Root wrangler config — deploy examples individually:
+#   cd examples/chat && wrangler deploy
+#   cd examples/poker && wrangler deploy
+name = "iroh-ts-examples"
+compatibility_date = "2025-01-01"

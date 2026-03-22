@@ -1,0 +1,5 @@
+name = "iroh-chat-example"
+compatibility_date = "2025-01-01"
+
+[site]
+bucket = "./dist"
