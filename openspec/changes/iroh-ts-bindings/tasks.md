@@ -29,7 +29,10 @@
 
 ## 5. WASM Bindings — Documents
 
-Documents (`iroh-docs`) do not currently have WASM support. Deferred to a future change.
+- [x] 5.1 Add `iroh-docs` and `iroh-gossip` dependencies; implement `DocEngine` wrapping Endpoint + Gossip + BlobStore + Engine + Router
+- [x] 5.2 Implement `createDoc()`, `authorDefault()`, `authorCreate()` on `DocEngine`
+- [x] 5.3 Implement `setBytes(author, key, value)`, `getExact(author, key)`, `del(author, prefix)`, `close()` on `Doc`
+- [x] 5.4 Add document exports to `crate/src/lib.rs` and TypeScript entry points
 
 ## 6. TypeScript Wrapper Layer
 
@@ -48,4 +51,5 @@ Documents (`iroh-docs`) do not currently have WASM support. Deferred to a future
 - [x] 8.1 Write integration tests for endpoint creation, identity access, address info, and shutdown
 - [x] 8.2 Write integration tests for peer-to-peer connections and bidirectional streaming
 - [x] 8.3 Write integration tests for blob add, read, has, and list operations
+- [x] 8.4 Write integration tests for document create, set/get, del operations
 - [x] 8.5 Configure `pnpm test` to run vitest with the compiled WASM module

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { Endpoint, EndpointAddr, BlobStore } from "../crate/pkg/nodejs/iroh_ts.js";
+import {
+  Endpoint,
+  EndpointAddr,
+  BlobStore,
+  DocEngine,
+} from "../crate/pkg/nodejs/iroh_ts.js";
 
 describe("EndpointAddr", () => {
   it("should create from endpoint ID and round-trip", () => {
@@ -143,5 +148,88 @@ describe("BlobStore", () => {
     expect(hashes).toContain(hash1);
     expect(hashes).toContain(hash2);
     store.free();
+  });
+});
+
+describe("DocEngine", () => {
+  it("should create a doc engine and get default author", async () => {
+    const engine = await DocEngine.create();
+    const authorId = await engine.authorDefault();
+    expect(authorId).toBeDefined();
+    expect(typeof authorId).toBe("string");
+    expect(authorId.length).toBe(64);
+    await engine.shutdown();
+    engine.free();
+  });
+
+  it("should create a document and set/get entries", async () => {
+    const engine = await DocEngine.create();
+    const authorId = await engine.authorDefault();
+    const doc = await engine.createDoc();
+
+    expect(doc.id()).toBeDefined();
+    expect(doc.id().length).toBe(64);
+
+    // Set a key-value entry
+    const key = new TextEncoder().encode("greeting");
+    const value = new TextEncoder().encode("hello docs");
+    const hash = await doc.setBytes(authorId, key, value);
+    expect(hash).toBeDefined();
+    expect(hash.length).toBe(64);
+
+    // Read it back
+    const retrieved = await doc.getExact(authorId, key);
+    expect(retrieved).not.toBeNull();
+    expect(new TextDecoder().decode(retrieved!)).toBe("hello docs");
+
+    // Non-existent key returns null
+    const missing = await doc.getExact(
+      authorId,
+      new TextEncoder().encode("nope"),
+    );
+    expect(missing).toBeUndefined();
+
+    await doc.close();
+    await engine.shutdown();
+    engine.free();
+  });
+
+  it("should delete entries by prefix", async () => {
+    const engine = await DocEngine.create();
+    const authorId = await engine.authorDefault();
+    const doc = await engine.createDoc();
+
+    await doc.setBytes(
+      authorId,
+      new TextEncoder().encode("foo/a"),
+      new TextEncoder().encode("1"),
+    );
+    await doc.setBytes(
+      authorId,
+      new TextEncoder().encode("foo/b"),
+      new TextEncoder().encode("2"),
+    );
+    await doc.setBytes(
+      authorId,
+      new TextEncoder().encode("bar/a"),
+      new TextEncoder().encode("3"),
+    );
+
+    const deleted = await doc.del(
+      authorId,
+      new TextEncoder().encode("foo/"),
+    );
+    expect(deleted).toBe(2);
+
+    // bar/a should still exist
+    const remaining = await doc.getExact(
+      authorId,
+      new TextEncoder().encode("bar/a"),
+    );
+    expect(remaining).not.toBeNull();
+
+    await doc.close();
+    await engine.shutdown();
+    engine.free();
   });
 });
