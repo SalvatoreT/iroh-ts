@@ -1,4 +1,4 @@
-import { Endpoint, EndpointAddr } from "iroh";
+import { Endpoint, EndpointAddr, type Connection } from "iroh";
 
 const ALPN = new TextEncoder().encode("iroh-chat/1");
 const encoder = new TextEncoder();
@@ -9,7 +9,7 @@ const messagesEl = document.getElementById("messages")!;
 const inputEl = document.getElementById("msg-input") as HTMLInputElement;
 const sendBtn = document.getElementById("send-btn") as HTMLButtonElement;
 
-let sendMessage: ((text: string) => Promise<void>) | null = null;
+let connection: Connection | null = null;
 
 function addMessage(text: string, from: "self" | "peer") {
   const div = document.createElement("div");
@@ -32,50 +32,27 @@ function enableInput() {
 }
 
 inputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && sendMessage) {
-    doSend();
-  }
+  if (e.key === "Enter") doSend();
 });
 sendBtn.addEventListener("click", doSend);
 
-async function doSend() {
+function doSend() {
   const text = inputEl.value.trim();
-  if (!text || !sendMessage) return;
+  if (!text || !connection) return;
   inputEl.value = "";
   addMessage(text, "self");
-  await sendMessage(text);
+  connection.sendDatagram(encoder.encode(text));
 }
 
-// --- Protocol: length-prefixed messages ---
-async function writeMessage(
-  send: { writeAll: (d: Uint8Array) => Promise<void> },
-  text: string,
-) {
-  const bytes = encoder.encode(text);
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
-}
-
-async function readMessages(
-  recv: { readToEnd: (limit: number) => Promise<Uint8Array> },
-  onMessage: (text: string) => void,
-) {
-  // Read all data and parse length-prefixed messages
-  try {
-    const all = await recv.readToEnd(1024 * 1024);
-    let offset = 0;
-    while (offset + 4 <= all.length) {
-      const len = new DataView(all.buffer, all.byteOffset + offset, 4).getUint32(0);
-      offset += 4;
-      if (offset + len > all.length) break;
-      const text = decoder.decode(all.subarray(offset, offset + len));
-      onMessage(text);
-      offset += len;
+// Read datagrams in a loop
+async function receiveLoop(conn: Connection) {
+  while (true) {
+    try {
+      const data = await conn.readDatagram();
+      addMessage(decoder.decode(data), "peer");
+    } catch {
+      break;
     }
-  } catch {
-    // Stream ended
   }
 }
 
@@ -90,52 +67,31 @@ async function main() {
   if (ticket) {
     // --- Join mode ---
     statusEl.textContent = "Joining chat room...";
-    const addr = EndpointAddr.fromEndpointId(ticket.split("@")[0]);
+    const addr = EndpointAddr.fromEndpointId(ticket);
     const conn = await endpoint.connect(addr, ALPN);
+    connection = conn;
     statusEl.textContent = `Connected to ${conn.remoteEndpointId().slice(0, 8)}...`;
-
-    // Open a bi-stream for sending
-    const stream = await conn.openBi();
-
-    // Write a hello to trigger acceptBi on host
-    await writeMessage(stream.send, "👋 joined the chat");
-
-    sendMessage = async (text: string) => {
-      await writeMessage(stream.send, text);
-    };
-
     enableInput();
-
-    // Read responses
-    readMessages(stream.recv, (text) => addMessage(text, "peer"));
+    addr.free();
+    receiveLoop(conn);
   } else {
     // --- Host mode ---
     endpoint.setAlpns([ALPN]);
     const addr = endpoint.endpointAddr();
     const id = addr.endpointId();
     const joinUrl = `${window.location.origin}${window.location.pathname}?ticket=${id}`;
-
     statusEl.innerHTML = `Share this link to chat: <a href="${joinUrl}">${joinUrl}</a>`;
+    addr.free();
 
-    // Accept one connection
     const conn = await endpoint.accept();
     if (!conn) {
       statusEl.textContent = "Endpoint closed.";
       return;
     }
+    connection = conn;
     statusEl.innerHTML += `<br>Peer connected: ${conn.remoteEndpointId().slice(0, 8)}...`;
-
-    // Accept the bi-stream (peer writes first)
-    const stream = await conn.acceptBi();
-
-    sendMessage = async (text: string) => {
-      await writeMessage(stream.send, text);
-    };
-
     enableInput();
-
-    // Read incoming messages
-    readMessages(stream.recv, (text) => addMessage(text, "peer"));
+    receiveLoop(conn);
   }
 }
 

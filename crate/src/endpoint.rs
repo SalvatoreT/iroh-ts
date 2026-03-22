@@ -252,6 +252,18 @@ pub struct RecvStream {
 
 #[wasm_bindgen]
 impl RecvStream {
+    /// Read a chunk of data from the stream (up to max_length bytes).
+    /// Returns null when the stream is finished.
+    #[wasm_bindgen(js_name = "readChunk")]
+    pub async fn read_chunk(&self, max_length: u32) -> Result<Option<Vec<u8>>, JsError> {
+        let mut r = self.inner.lock().await;
+        let chunk = r
+            .read_chunk(max_length as usize)
+            .await
+            .map_err(to_err)?;
+        Ok(chunk.map(|c| c.bytes.to_vec()))
+    }
+
     /// Read all remaining data from the stream up to a size limit (in bytes).
     #[wasm_bindgen(js_name = "readToEnd")]
     pub async fn read_to_end(&self, size_limit: u32) -> Result<Vec<u8>, JsError> {
