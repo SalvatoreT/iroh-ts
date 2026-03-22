@@ -1,10 +1,11 @@
-import { Endpoint, EndpointAddr } from "iroh";
+import { Endpoint, EndpointAddr, type Connection } from "iroh";
 import "poker-card-element";
 import { PokerGame } from "./game.js";
 import type { Card, HostMessage, PlayerMessage } from "./protocol.js";
-import { encode, decode } from "./protocol.js";
 
 const ALPN = new TextEncoder().encode("iroh-poker/1");
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 const statusEl = document.getElementById("status")!;
 const communityEl = document.getElementById("community")!;
@@ -18,16 +19,12 @@ const btnCheck = document.getElementById("btn-check") as HTMLButtonElement;
 const btnFold = document.getElementById("btn-fold") as HTMLButtonElement;
 const betAmountEl = document.getElementById("bet-amount") as HTMLInputElement;
 
-function renderCards(container: HTMLElement, cards: Card[], faceDown = false) {
+function renderCards(container: HTMLElement, cards: Card[]) {
   container.innerHTML = "";
   for (const card of cards) {
     const el = document.createElement("playing-card") as any;
-    if (faceDown) {
-      // No rank/suit = face down
-    } else {
-      el.setAttribute("rank", card.rank);
-      el.setAttribute("suit", card.suit);
-    }
+    el.setAttribute("rank", card.rank);
+    el.setAttribute("suit", card.suit);
     container.appendChild(el);
   }
 }
@@ -52,16 +49,12 @@ function renderState(msg: Extract<HostMessage, { kind: "state" }>, myIndex: numb
   btnFold.disabled = !isMyTurn;
 }
 
-// --- Write/read helpers ---
-async function sendMsg(
-  send: { writeAll: (d: Uint8Array) => Promise<void> },
-  msg: PlayerMessage | HostMessage,
-) {
-  const bytes = encode(msg);
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
+function sendMsg(conn: Connection, msg: HostMessage | PlayerMessage) {
+  conn.sendDatagram(encoder.encode(JSON.stringify(msg)));
+}
+
+function parseMsg(data: Uint8Array): HostMessage | PlayerMessage {
+  return JSON.parse(decoder.decode(data));
 }
 
 // --- Main ---
@@ -85,6 +78,7 @@ async function hostGame(endpoint: Endpoint) {
   const id = addr.endpointId();
   const joinUrl = `${window.location.origin}${window.location.pathname}?ticket=${id}`;
   statusEl.innerHTML = `Waiting for opponent... Share: <a href="${joinUrl}">${joinUrl}</a>`;
+  addr.free();
 
   const game = new PokerGame();
   game.addPlayer("Host");
@@ -92,17 +86,13 @@ async function hostGame(endpoint: Endpoint) {
   const conn = await endpoint.accept();
   if (!conn) return;
 
-  game.addPlayer(`Player ${game.players.length}`);
+  game.addPlayer(`Player 2`);
   statusEl.textContent = `Opponent connected! Dealing...`;
 
-  // Accept stream from player (they write first)
-  const stream = await conn.acceptBi();
-
-  // Deal and send initial state
   game.deal();
 
-  // Send deal to player (their hand)
-  await sendMsg(stream.send, {
+  // Send deal to player (their hand via datagram)
+  sendMsg(conn, {
     kind: "deal",
     hand: game.players[1].hand,
     community: [],
@@ -111,8 +101,7 @@ async function hostGame(endpoint: Endpoint) {
   // Show host's own hand
   renderCards(handEl, game.players[0].hand);
 
-  // Send state
-  const broadcastState = async () => {
+  const broadcastState = () => {
     const stateMsg: HostMessage = {
       kind: "state",
       players: game.getPlayerStates(),
@@ -121,52 +110,49 @@ async function hostGame(endpoint: Endpoint) {
       currentPlayer: game.currentPlayer,
       phase: game.phase,
     };
-    await sendMsg(stream.send, stateMsg);
+    sendMsg(conn, stateMsg);
     renderState(stateMsg, 0);
   };
 
-  await broadcastState();
+  broadcastState();
 
   // Host action handlers
-  const doAction = async (action: PlayerMessage) => {
+  const doHostAction = (action: PlayerMessage) => {
     if (action.kind !== "action") return;
     game.applyAction(0, action.action);
     if (game.phase === "showdown") {
       const result = game.getWinner();
-      const resultMsg: HostMessage = { kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot };
-      await sendMsg(stream.send, resultMsg);
+      sendMsg(conn, { kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot });
       resultEl.textContent = `${result.name} wins with ${result.handName}! ($${game.pot})`;
       actionsEl.style.display = "none";
     } else {
-      await broadcastState();
+      broadcastState();
     }
   };
 
-  btnBet.onclick = () => doAction({ kind: "action", action: { type: "bet", amount: parseInt(betAmountEl.value) } });
-  btnCheck.onclick = () => doAction({ kind: "action", action: { type: "check" } });
-  btnFold.onclick = () => doAction({ kind: "action", action: { type: "fold" } });
+  btnBet.onclick = () => doHostAction({ kind: "action", action: { type: "bet", amount: parseInt(betAmountEl.value) } });
+  btnCheck.onclick = () => doHostAction({ kind: "action", action: { type: "check" } });
+  btnFold.onclick = () => doHostAction({ kind: "action", action: { type: "fold" } });
 
-  // Read player actions
-  const allData = await stream.recv.readToEnd(1024 * 1024);
-  let offset = 0;
-  while (offset + 4 <= allData.length) {
-    const len = new DataView(allData.buffer, allData.byteOffset + offset, 4).getUint32(0);
-    offset += 4;
-    if (offset + len > allData.length) break;
-    const msg = decode(allData.subarray(offset, offset + len)) as PlayerMessage;
-    offset += len;
-
-    if (msg.kind === "action") {
-      game.applyAction(1, msg.action);
-      if (game.phase === "showdown") {
-        const result = game.getWinner();
-        const resultMsg: HostMessage = { kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot };
-        await sendMsg(stream.send, resultMsg);
-        resultEl.textContent = `${result.name} wins with ${result.handName}! ($${game.pot})`;
-        actionsEl.style.display = "none";
-      } else {
-        await broadcastState();
+  // Read player actions via datagrams
+  while (true) {
+    try {
+      const data = await conn.readDatagram();
+      const msg = parseMsg(data) as PlayerMessage;
+      if (msg.kind === "action") {
+        game.applyAction(1, msg.action);
+        if (game.phase === "showdown") {
+          const result = game.getWinner();
+          sendMsg(conn, { kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot });
+          resultEl.textContent = `${result.name} wins with ${result.handName}! ($${game.pot})`;
+          actionsEl.style.display = "none";
+          break;
+        } else {
+          broadcastState();
+        }
       }
+    } catch {
+      break;
     }
   }
 }
@@ -176,46 +162,38 @@ async function joinGame(endpoint: Endpoint, ticket: string) {
   const addr = EndpointAddr.fromEndpointId(ticket);
   const conn = await endpoint.connect(addr, ALPN);
   statusEl.textContent = "Connected! Waiting for deal...";
+  addr.free();
 
-  const stream = await conn.openBi();
-
-  // Send ready message to trigger host's acceptBi
-  await sendMsg(stream.send, { kind: "ready" } satisfies PlayerMessage);
-
-  let myIndex = 1;
-
-  // Read all host messages
-  const allData = await stream.recv.readToEnd(1024 * 1024);
-  let offset = 0;
-  while (offset + 4 <= allData.length) {
-    const len = new DataView(allData.buffer, allData.byteOffset + offset, 4).getUint32(0);
-    offset += 4;
-    if (offset + len > allData.length) break;
-    const msg = decode(allData.subarray(offset, offset + len)) as HostMessage;
-    offset += len;
-
-    switch (msg.kind) {
-      case "deal":
-        renderCards(handEl, msg.hand);
-        statusEl.textContent = "Cards dealt!";
-        break;
-      case "state":
-        renderState(msg, myIndex);
-        break;
-      case "result":
-        resultEl.textContent = `${msg.winner} wins with ${msg.winningHand}! ($${msg.pot})`;
-        actionsEl.style.display = "none";
-        break;
-      case "joined":
-        myIndex = msg.playerIndex;
-        break;
-    }
-  }
+  const myIndex = 1;
 
   // Player action handlers
-  btnBet.onclick = () => sendMsg(stream.send, { kind: "action", action: { type: "bet", amount: parseInt(betAmountEl.value) } });
-  btnCheck.onclick = () => sendMsg(stream.send, { kind: "action", action: { type: "check" } });
-  btnFold.onclick = () => sendMsg(stream.send, { kind: "action", action: { type: "fold" } });
+  btnBet.onclick = () => sendMsg(conn, { kind: "action", action: { type: "bet", amount: parseInt(betAmountEl.value) } });
+  btnCheck.onclick = () => sendMsg(conn, { kind: "action", action: { type: "check" } });
+  btnFold.onclick = () => sendMsg(conn, { kind: "action", action: { type: "fold" } });
+
+  // Read host messages via datagrams
+  while (true) {
+    try {
+      const data = await conn.readDatagram();
+      const msg = parseMsg(data) as HostMessage;
+
+      switch (msg.kind) {
+        case "deal":
+          renderCards(handEl, msg.hand);
+          statusEl.textContent = "Cards dealt!";
+          break;
+        case "state":
+          renderState(msg, myIndex);
+          break;
+        case "result":
+          resultEl.textContent = `${msg.winner} wins with ${msg.winningHand}! ($${msg.pot})`;
+          actionsEl.style.display = "none";
+          break;
+      }
+    } catch {
+      break;
+    }
+  }
 }
 
 main().catch((err) => {
