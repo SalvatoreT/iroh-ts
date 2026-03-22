@@ -1,4 +1,4 @@
-import { Endpoint, EndpointAddr, type Connection } from "iroh";
+import { Endpoint, EndpointAddr, type SendStream, type RecvStream } from "iroh";
 
 const ALPN = new TextEncoder().encode("iroh-chat/1");
 const encoder = new TextEncoder();
@@ -9,7 +9,7 @@ const messagesEl = document.getElementById("messages")!;
 const inputEl = document.getElementById("msg-input") as HTMLInputElement;
 const sendBtn = document.getElementById("send-btn") as HTMLButtonElement;
 
-let connection: Connection | null = null;
+let sendStream: SendStream | null = null;
 
 function addMessage(text: string, from: "self" | "peer") {
   const div = document.createElement("div");
@@ -36,20 +36,36 @@ inputEl.addEventListener("keydown", (e) => {
 });
 sendBtn.addEventListener("click", doSend);
 
-function doSend() {
+async function doSend() {
   const text = inputEl.value.trim();
-  if (!text || !connection) return;
+  if (!text || !sendStream) return;
   inputEl.value = "";
   addMessage(text, "self");
-  connection.sendDatagram(encoder.encode(text));
+  await writeMsg(sendStream, text);
 }
 
-// Read datagrams in a loop
-async function receiveLoop(conn: Connection) {
+// Length-prefixed message protocol
+async function writeMsg(send: SendStream, text: string) {
+  const bytes = encoder.encode(text);
+  const len = new Uint8Array(4);
+  new DataView(len.buffer).setUint32(0, bytes.length);
+  await send.writeAll(len);
+  await send.writeAll(bytes);
+}
+
+async function readLoop(recv: RecvStream) {
+  const buf: number[] = [];
   while (true) {
     try {
-      const data = await conn.readDatagram();
-      addMessage(decoder.decode(data), "peer");
+      const chunk = await recv.readChunk(4096);
+      if (chunk === undefined || chunk === null) break;
+      for (let i = 0; i < chunk.length; i++) buf.push(chunk[i]);
+      while (buf.length >= 4) {
+        const len = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
+        if (buf.length < 4 + len) break;
+        const msgBytes = new Uint8Array(buf.splice(0, 4 + len).slice(4));
+        addMessage(decoder.decode(msgBytes), "peer");
+      }
     } catch {
       break;
     }
@@ -65,17 +81,21 @@ async function main() {
   await endpoint.online();
 
   if (ticket) {
-    // --- Join mode ---
+    // --- Join mode: open bi-stream, write immediately ---
     statusEl.textContent = "Joining chat room...";
     const addr = EndpointAddr.fromEndpointId(ticket);
     const conn = await endpoint.connect(addr, ALPN);
-    connection = conn;
     statusEl.textContent = `Connected to ${conn.remoteEndpointId().slice(0, 8)}...`;
-    enableInput();
     addr.free();
-    receiveLoop(conn);
+
+    const stream = await conn.openBi();
+    sendStream = stream.send;
+    // Write immediately so host's acceptBi resolves
+    await writeMsg(sendStream, "joined");
+    enableInput();
+    readLoop(stream.recv);
   } else {
-    // --- Host mode ---
+    // --- Host mode: accept connection + bi-stream ---
     endpoint.setAlpns([ALPN]);
     const addr = endpoint.endpointAddr();
     const id = addr.endpointId();
@@ -88,10 +108,13 @@ async function main() {
       statusEl.textContent = "Endpoint closed.";
       return;
     }
-    connection = conn;
     statusEl.innerHTML += `<br>Peer connected: ${conn.remoteEndpointId().slice(0, 8)}...`;
+
+    // acceptBi resolves once the joiner writes
+    const stream = await conn.acceptBi();
+    sendStream = stream.send;
     enableInput();
-    receiveLoop(conn);
+    readLoop(stream.recv);
   }
 }
 

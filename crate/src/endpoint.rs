@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::Mutex;
 use wasm_bindgen::prelude::*;
@@ -14,8 +15,14 @@ pub struct Endpoint {
 #[wasm_bindgen]
 impl Endpoint {
     /// Create a new Iroh endpoint with default n0 relay settings.
+    /// Keepalive is enabled (5s interval) to prevent relay idle timeouts.
     pub async fn create() -> Result<Endpoint, JsError> {
-        let ep = iroh::Endpoint::bind(iroh::endpoint::presets::N0)
+        let transport_config = iroh::endpoint::QuicTransportConfig::builder()
+            .keep_alive_interval(Duration::from_secs(5))
+            .build();
+        let ep = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+            .transport_config(transport_config)
+            .bind()
             .await
             .map_err(to_err)?;
         Ok(Endpoint { inner: ep })

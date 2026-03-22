@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use wasm_bindgen::prelude::*;
 
 /// A document engine for replicated key-value documents.
@@ -16,7 +18,12 @@ impl DocEngine {
     /// Create a new document engine with in-memory storage.
     /// This creates its own Endpoint, gossip, blob store, and docs engine.
     pub async fn create() -> Result<DocEngine, JsError> {
-        let endpoint = iroh::Endpoint::bind(iroh::endpoint::presets::N0)
+        let transport_config = iroh::endpoint::QuicTransportConfig::builder()
+            .keep_alive_interval(Duration::from_secs(5))
+            .build();
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+            .transport_config(transport_config)
+            .bind()
             .await
             .map_err(to_err)?;
 
