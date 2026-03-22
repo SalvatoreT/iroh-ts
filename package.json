@@ -1,0 +1,30 @@
+{
+  "name": "iroh",
+  "version": "0.1.0",
+  "description": "TypeScript bindings for iroh, the modular networking stack",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "crate/pkg"
+  ],
+  "scripts": {
+    "build:wasm": "CC=${CC:-clang} AR=${AR:-ar} wasm-pack build crate --target nodejs --out-dir pkg",
+    "build:ts": "tsc",
+    "build": "pnpm build:wasm && pnpm build:ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
