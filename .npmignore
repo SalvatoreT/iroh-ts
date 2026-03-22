@@ -1,0 +1,13 @@
+# npm ignore — when this file exists, .gitignore is NOT used by npm
+crate/target/
+crate/src/
+crate/Cargo.toml
+crate/Cargo.lock
+__test__/
+openspec/
+examples/
+.claude/
+tsconfig.json
+vitest.config.ts
+wrangler.toml
+pnpm-workspace.yaml

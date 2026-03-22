@@ -1,6 +1,6 @@
 {
   "name": "@salvatoret/iroh",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript bindings for iroh, the modular networking stack",
   "license": "MIT",
   "type": "module",
@@ -32,12 +32,13 @@
   },
   "files": [
     "dist",
-    "crate/pkg"
+    "crate/pkg/nodejs",
+    "crate/pkg/bundler"
   ],
   "scripts": {
     "build:wasm:node": "CC=${CC:-clang} AR=${AR:-ar} wasm-pack build crate --target nodejs --out-dir pkg/nodejs",
     "build:wasm:browser": "CC=${CC:-clang} AR=${AR:-ar} wasm-pack build crate --target bundler --out-dir pkg/bundler",
-    "build:wasm": "pnpm build:wasm:node && pnpm build:wasm:browser",
+    "build:wasm": "pnpm build:wasm:node && pnpm build:wasm:browser && rm -f crate/pkg/nodejs/.gitignore crate/pkg/bundler/.gitignore",
     "build:ts": "tsc",
     "build": "pnpm build:wasm && pnpm build:ts",
     "test": "vitest run",
