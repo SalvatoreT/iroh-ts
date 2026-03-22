@@ -5,7 +5,7 @@
 - [x] 1.3 Scaffold the Rust crate in `crate/` with `Cargo.toml` depending on `iroh`, `wasm-bindgen`, `wasm-bindgen-futures`, and `js-sys`
 - [x] 1.4 Create `crate/src/lib.rs` entry point with `wasm-bindgen` setup
 - [x] 1.5 Install TypeScript, `vitest`, and other dev dependencies via pnpm
-- [x] 1.6 Add `pnpm build:wasm` script invoking `wasm-pack build` for nodejs target
+- [x] 1.6 Add `pnpm build:wasm` script invoking `wasm-pack build` for nodejs and bundler targets
 
 ## 2. WASM Bindings — Endpoint Identity
 
@@ -33,13 +33,14 @@ Documents (`iroh-docs`) do not currently have WASM support. Deferred to a future
 
 ## 6. TypeScript Wrapper Layer
 
-- [x] 6.1 Create `ts/index.ts` re-exporting the public API surface from WASM bindings
+- [x] 6.1 Create `ts/node.ts` re-exporting from nodejs wasm-pack target
+- [x] 6.2 Create `ts/browser.ts` re-exporting from bundler wasm-pack target
 
 ## 7. Build & Package Configuration
 
-- [x] 7.1 Configure `pnpm build` to run wasm-pack build + TypeScript compilation
+- [x] 7.1 Configure `pnpm build` to run wasm-pack build (both targets) + TypeScript compilation
 - [x] 7.2 Configure `pnpm build:ts` to compile TypeScript wrappers to `dist/`
-- [x] 7.3 Configure `package.json` exports
+- [x] 7.3 Configure `package.json` conditional exports (`node` → nodejs target, `browser`/`default` → bundler target)
 - [x] 7.4 wasm-opt is run automatically by wasm-pack in release mode
 
 ## 8. Testing

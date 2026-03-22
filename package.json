@@ -4,12 +4,22 @@
   "description": "TypeScript bindings for iroh, the modular networking stack",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/node.js",
+  "types": "./dist/node.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "node": {
+        "import": "./dist/node.js",
+        "types": "./dist/node.d.ts"
+      },
+      "browser": {
+        "import": "./dist/browser.js",
+        "types": "./dist/browser.d.ts"
+      },
+      "default": {
+        "import": "./dist/browser.js",
+        "types": "./dist/browser.d.ts"
+      }
     }
   },
   "files": [
@@ -17,7 +27,9 @@
     "crate/pkg"
   ],
   "scripts": {
-    "build:wasm": "CC=${CC:-clang} AR=${AR:-ar} wasm-pack build crate --target nodejs --out-dir pkg",
+    "build:wasm:node": "CC=${CC:-clang} AR=${AR:-ar} wasm-pack build crate --target nodejs --out-dir pkg/nodejs",
+    "build:wasm:browser": "CC=${CC:-clang} AR=${AR:-ar} wasm-pack build crate --target bundler --out-dir pkg/bundler",
+    "build:wasm": "pnpm build:wasm:node && pnpm build:wasm:browser",
     "build:ts": "tsc",
     "build": "pnpm build:wasm && pnpm build:ts",
     "test": "vitest run",

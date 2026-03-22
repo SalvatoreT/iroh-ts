@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Endpoint, EndpointAddr, BlobStore } from "../crate/pkg/iroh_ts.js";
+import { Endpoint, EndpointAddr, BlobStore } from "../crate/pkg/nodejs/iroh_ts.js";
 
 describe("EndpointAddr", () => {
   it("should create from endpoint ID and round-trip", () => {
