@@ -46,8 +46,9 @@ jobs:
         run: |
           sed -i 's/"@salvatoret\/iroh": "workspace:\*"/"@salvatoret\/iroh": "latest"/' package.json
           pnpm install --no-frozen-lockfile
-          BASE_PATH=/iroh-ts/chat/ pnpm build
-          cp -r dist ../../_site/chat
+          BASE_PATH=/iroh-ts/examples/chat/ pnpm build
+          mkdir -p ../../_site/examples
+          cp -r dist ../../_site/examples/chat
 
       # Build poker example with published npm package
       - name: Build poker example
@@ -55,8 +56,9 @@ jobs:
         run: |
           sed -i 's/"@salvatoret\/iroh": "workspace:\*"/"@salvatoret\/iroh": "latest"/' package.json
           pnpm install --no-frozen-lockfile
-          BASE_PATH=/iroh-ts/poker/ pnpm build
-          cp -r dist ../../_site/poker
+          BASE_PATH=/iroh-ts/examples/poker/ pnpm build
+          mkdir -p ../../_site/examples
+          cp -r dist ../../_site/examples/poker
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
