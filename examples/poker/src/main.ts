@@ -18,6 +18,8 @@ const btnBet = document.getElementById("btn-bet") as HTMLButtonElement;
 const btnCheck = document.getElementById("btn-check") as HTMLButtonElement;
 const btnFold = document.getElementById("btn-fold") as HTMLButtonElement;
 const betAmountEl = document.getElementById("bet-amount") as HTMLInputElement;
+const newHandBar = document.getElementById("new-hand-bar")!;
+const btnNewHand = document.getElementById("btn-new-hand") as HTMLButtonElement;
 
 function renderCards(container: HTMLElement, cards: Card[]) {
   container.innerHTML = "";
@@ -87,19 +89,6 @@ async function hostGame(endpoint: Endpoint) {
   if (!conn) return;
 
   game.addPlayer(`Player 2`);
-  statusEl.textContent = `Opponent connected! Dealing...`;
-
-  game.deal();
-
-  // Send deal to player (their hand via datagram)
-  sendMsg(conn, {
-    kind: "deal",
-    hand: game.players[1].hand,
-    community: [],
-  } satisfies HostMessage);
-
-  // Show host's own hand
-  renderCards(handEl, game.players[0].hand);
 
   const broadcastState = () => {
     const stateMsg: HostMessage = {
@@ -114,17 +103,37 @@ async function hostGame(endpoint: Endpoint) {
     renderState(stateMsg, 0);
   };
 
-  broadcastState();
+  const startHand = () => {
+    statusEl.textContent = `Dealing...`;
+    resultEl.textContent = "";
+    newHandBar.style.display = "none";
+
+    game.deal();
+
+    sendMsg(conn, {
+      kind: "deal",
+      hand: game.players[1].hand,
+      community: [],
+    } satisfies HostMessage);
+
+    renderCards(handEl, game.players[0].hand);
+    broadcastState();
+  };
+
+  const showResult = () => {
+    const result = game.getWinner();
+    sendMsg(conn, { kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot });
+    resultEl.textContent = `${result.name} wins with ${result.handName}! ($${game.pot})`;
+    actionsEl.style.display = "none";
+    newHandBar.style.display = "flex";
+  };
 
   // Host action handlers
   const doHostAction = (action: PlayerMessage) => {
     if (action.kind !== "action") return;
     game.applyAction(0, action.action);
     if (game.phase === "showdown") {
-      const result = game.getWinner();
-      sendMsg(conn, { kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot });
-      resultEl.textContent = `${result.name} wins with ${result.handName}! ($${game.pot})`;
-      actionsEl.style.display = "none";
+      showResult();
     } else {
       broadcastState();
     }
@@ -134,6 +143,14 @@ async function hostGame(endpoint: Endpoint) {
   btnCheck.onclick = () => doHostAction({ kind: "action", action: { type: "check" } });
   btnFold.onclick = () => doHostAction({ kind: "action", action: { type: "fold" } });
 
+  btnNewHand.onclick = () => {
+    sendMsg(conn, { kind: "new-hand" });
+    startHand();
+  };
+
+  // Start first hand
+  startHand();
+
   // Read player actions via datagrams
   while (true) {
     try {
@@ -142,11 +159,7 @@ async function hostGame(endpoint: Endpoint) {
       if (msg.kind === "action") {
         game.applyAction(1, msg.action);
         if (game.phase === "showdown") {
-          const result = game.getWinner();
-          sendMsg(conn, { kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot });
-          resultEl.textContent = `${result.name} wins with ${result.handName}! ($${game.pot})`;
-          actionsEl.style.display = "none";
-          break;
+          showResult();
         } else {
           broadcastState();
         }
@@ -181,6 +194,8 @@ async function joinGame(endpoint: Endpoint, ticket: string) {
         case "deal":
           renderCards(handEl, msg.hand);
           statusEl.textContent = "Cards dealt!";
+          resultEl.textContent = "";
+          newHandBar.style.display = "none";
           break;
         case "state":
           renderState(msg, myIndex);
@@ -188,6 +203,13 @@ async function joinGame(endpoint: Endpoint, ticket: string) {
         case "result":
           resultEl.textContent = `${msg.winner} wins with ${msg.winningHand}! ($${msg.pot})`;
           actionsEl.style.display = "none";
+          // Player waits for host to start new hand
+          break;
+        case "new-hand":
+          // Host is starting a new hand, wait for deal
+          statusEl.textContent = "New hand starting...";
+          resultEl.textContent = "";
+          newHandBar.style.display = "none";
           break;
       }
     } catch {
