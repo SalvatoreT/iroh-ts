@@ -36,11 +36,12 @@
     .btn-fold { background: #c0392b; color: white; }
     #bet-amount { width: 70px; padding: 10px 8px; border-radius: 8px; border: 1px solid #444; background: #0d4a0d; color: #e0e0e0; font-size: 14px; text-align: center; }
 
-    playing-card { --card-width: 52px; }
+    playing-card { display: inline-block; width: 52px; }
+    playing-card img { width: 100%; height: auto; display: block; }
 
     /* Mobile: shrink cards and tighten spacing */
     @media (max-width: 480px) {
-      playing-card { --card-width: 38px; }
+      playing-card { width: 38px; }
       #table { padding: 12px 14px; border-radius: 40px; border-width: 4px; }
       #community { gap: 4px; min-height: 44px; }
       #hand { gap: 4px; }
