@@ -37,6 +37,24 @@
     #bet-amount { width: 70px; padding: 10px 8px; border-radius: 8px; border: 1px solid #444; background: #0d4a0d; color: #e0e0e0; font-size: 14px; text-align: center; }
 
     playing-card { --card-width: 52px; }
+
+    /* Mobile: shrink cards and tighten spacing */
+    @media (max-width: 480px) {
+      playing-card { --card-width: 38px; }
+      #table { padding: 12px 14px; border-radius: 40px; border-width: 4px; }
+      #community { gap: 4px; min-height: 44px; }
+      #hand { gap: 4px; }
+      #pot { font-size: 14px; }
+      #game-area { padding: 6px; gap: 4px; }
+      #players { gap: 6px; }
+      .player-info { padding: 4px 8px; font-size: 11px; }
+      #result { font-size: 15px; }
+      #action-bar button { padding: 10px 16px; font-size: 14px; }
+      #bet-amount { width: 60px; padding: 8px 6px; font-size: 13px; }
+    }
+
+    #new-hand-bar { display: none; flex-shrink: 0; width: 100%; background: #062006; border-top: 2px solid #0a300a; padding: 10px 16px; text-align: center; }
+    #new-hand-bar button { padding: 12px 32px; border-radius: 8px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; background: #2ecc71; color: #fff; }
   </style>
 </head>
 <body>
@@ -50,6 +68,9 @@
     <div id="hand"></div>
     <div id="players"></div>
     <div id="result"></div>
+  </div>
+  <div id="new-hand-bar">
+    <button id="btn-new-hand">New Hand</button>
   </div>
   <div id="action-bar">
     <div class="action-inner">

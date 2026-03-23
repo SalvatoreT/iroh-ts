@@ -17,7 +17,8 @@ export type HostMessage =
   | { kind: "deal"; hand: Card[]; community: Card[] }
   | { kind: "state"; players: PlayerState[]; pot: number; community: Card[]; currentPlayer: number; phase: Phase }
   | { kind: "result"; winner: string; winningHand: string; pot: number }
-  | { kind: "joined"; playerIndex: number; playerCount: number };
+  | { kind: "joined"; playerIndex: number; playerCount: number }
+  | { kind: "new-hand" };
 
 // Messages from player → host
 export type PlayerMessage =
