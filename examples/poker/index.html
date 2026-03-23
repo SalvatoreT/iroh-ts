@@ -14,11 +14,11 @@
     #game-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: auto; padding: 12px; gap: 8px; }
 
     #table { padding: 20px 28px; background: #1a6b1a; border-radius: 80px; border: 6px solid #3d2b1f; width: 100%; max-width: 520px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-    #community { display: flex; gap: 6px; min-height: 60px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    #community { display: flex; gap: 8px; min-height: 100px; align-items: center; justify-content: center; flex-wrap: wrap; }
     #pot { font-size: 16px; color: #ffd700; }
 
     #hand-label { font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
-    #hand { display: flex; gap: 6px; align-items: center; justify-content: center; }
+    #hand { display: flex; gap: 8px; align-items: center; justify-content: center; }
 
     #players { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
     .player-info { background: #062006; padding: 6px 12px; border-radius: 8px; text-align: center; font-size: 12px; }
@@ -36,14 +36,14 @@
     .btn-fold { background: #c0392b; color: white; }
     #bet-amount { width: 70px; padding: 10px 8px; border-radius: 8px; border: 1px solid #444; background: #0d4a0d; color: #e0e0e0; font-size: 14px; text-align: center; }
 
-    playing-card { display: inline-block; width: min(13vw, 52px); }
+    playing-card { display: inline-block; width: min(22vw, 100px); }
     playing-card img { width: 100%; height: auto; display: block; }
 
     /* Mobile: shrink cards and tighten spacing */
     @media (max-width: 480px) {
       #table { padding: 12px 14px; border-radius: 40px; border-width: 4px; }
-      #community { gap: 4px; min-height: 44px; }
-      #hand { gap: 4px; }
+      #community { gap: 6px; min-height: 80px; }
+      #hand { gap: 6px; }
       #pot { font-size: 14px; }
       #game-area { padding: 6px; gap: 4px; }
       #players { gap: 6px; }
