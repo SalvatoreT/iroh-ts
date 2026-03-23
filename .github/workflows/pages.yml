@@ -1,0 +1,71 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Assemble docs site
+      - name: Copy docs to site output
+        run: |
+          mkdir -p _site
+          cp docs/index.html docs/style.css _site/
+
+      # Build chat example with published npm package
+      - name: Build chat example
+        working-directory: examples/chat
+        run: |
+          sed -i 's/"@salvatoret\/iroh": "workspace:\*"/"@salvatoret\/iroh": "latest"/' package.json
+          pnpm install --no-frozen-lockfile
+          BASE_PATH=/iroh-ts/chat/ pnpm build
+          cp -r dist ../../_site/chat
+
+      # Build poker example with published npm package
+      - name: Build poker example
+        working-directory: examples/poker
+        run: |
+          sed -i 's/"@salvatoret\/iroh": "workspace:\*"/"@salvatoret\/iroh": "latest"/' package.json
+          pnpm install --no-frozen-lockfile
+          BASE_PATH=/iroh-ts/poker/ pnpm build
+          cp -r dist ../../_site/poker
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

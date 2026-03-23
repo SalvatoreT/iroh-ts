@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iroh-ts — Peer-to-peer networking for TypeScript</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1><span>iroh</span>-ts</h1>
+    <p>Peer-to-peer networking for TypeScript — connections, streams, blobs, and documents — powered by WASM.</p>
+    <nav>
+      <a href="#install">Install</a>
+      <a href="#quickstart">Quick Start</a>
+      <a href="#api">API Reference</a>
+      <a href="#examples">Examples</a>
+      <a href="https://github.com/SalvatoreT/iroh-ts">GitHub</a>
+    </nav>
+  </header>
+
+  <!-- Install -->
+  <section id="install">
+    <h2>Install</h2>
+    <div class="install-cmd">
+      npm install @salvatoret/iroh <span class="dim"># or pnpm add / yarn add</span>
+    </div>
+    <p style="margin-top: 12px; color: var(--text-dim); font-size: 14px;">
+      Built on <a href="https://iroh.computer">iroh</a> v0.97 (Rust &rarr; WASM via wasm-pack). Works in Node.js &ge;18 and modern browsers. Zero native dependencies.
+    </p>
+  </section>
+
+  <!-- Quick Start -->
+  <section id="quickstart">
+    <h2>Quick Start</h2>
+    <p>Two nodes connect and exchange a message:</p>
+<pre><code>import { Endpoint } from "@salvatoret/iroh";
+
+const ALPN = new TextEncoder().encode("my-app/1");
+
+// --- Node A: accept a connection ---
+const nodeA = await Endpoint.create();
+await nodeA.online();
+nodeA.setAlpns([ALPN]);
+const addr = nodeA.endpointAddr();
+
+// --- Node B: connect and send ---
+const nodeB = await Endpoint.create();
+await nodeB.online();
+const conn = await nodeB.connect(addr, ALPN);
+const stream = await conn.openBi();
+await stream.send.writeAll(new TextEncoder().encode("hello from B"));
+stream.send.finish();
+
+// --- Node A: receive ---
+const accepted = await nodeA.accept();
+const incoming = await accepted.acceptBi();
+const data = await incoming.recv.readToEnd(65536);
+console.log(new TextDecoder().decode(data)); // "hello from B"</code></pre>
+    <div class="note">
+      <strong>Note:</strong> <code>acceptBi()</code> won't resolve until the opener writes to its <code>SendStream</code>. Always write before awaiting the accept side.
+    </div>
+  </section>
+
+  <!-- Live Examples -->
+  <section id="examples">
+    <h2>Live Examples</h2>
+    <div class="examples-grid">
+      <a class="example-card" href="chat/">
+        <h3>Chat</h3>
+        <p>Peer-to-peer chat room. Create a room, share the link, and start messaging over iroh streams.</p>
+      </a>
+      <a class="example-card" href="poker/">
+        <h3>Poker</h3>
+        <p>Multiplayer poker table with card rendering. Game state synced between players over iroh.</p>
+      </a>
+    </div>
+  </section>
+
+  <!-- API Reference -->
+  <section id="api">
+    <h2>API Reference</h2>
+
+    <h3>Endpoint</h3>
+    <p>The main entry point. Creates a QUIC endpoint with relay connectivity for NAT traversal.</p>
+    <table>
+      <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+      <tr><td>create</td><td>static create(): Promise&lt;Endpoint&gt;</td><td>Create endpoint with default n0 relay settings</td></tr>
+      <tr><td>endpointId</td><td>endpointId(): string</td><td>Hex-encoded Ed25519 public key (64 chars)</td></tr>
+      <tr><td>endpointAddr</td><td>endpointAddr(): EndpointAddr</td><td>Full address info (id + relay URL)</td></tr>
+      <tr><td>online</td><td>online(): Promise&lt;void&gt;</td><td>Wait until connected to a relay server</td></tr>
+      <tr><td>connect</td><td>connect(addr, alpn): Promise&lt;Connection&gt;</td><td>Connect to a remote peer</td></tr>
+      <tr><td>accept</td><td>accept(): Promise&lt;Connection | undefined&gt;</td><td>Accept an incoming connection</td></tr>
+      <tr><td>setAlpns</td><td>setAlpns(alpns: Uint8Array[]): void</td><td>Set accepted ALPN protocols</td></tr>
+      <tr><td>close</td><td>close(): Promise&lt;void&gt;</td><td>Gracefully shut down</td></tr>
+    </table>
+
+    <h3>EndpointAddr</h3>
+    <p>Address information for reaching an endpoint (ID + relay URL + direct addresses).</p>
+    <table>
+      <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+      <tr><td>fromEndpointId</td><td>static fromEndpointId(id: string): EndpointAddr</td><td>Create from hex endpoint ID</td></tr>
+      <tr><td>endpointId</td><td>endpointId(): string</td><td>Get the endpoint ID</td></tr>
+      <tr><td>relayUrl</td><td>relayUrl(): string | undefined</td><td>Get the relay URL, if any</td></tr>
+    </table>
+
+    <h3>Connection</h3>
+    <p>A QUIC connection to a remote peer. Supports bidirectional streams, unidirectional streams, and datagrams.</p>
+    <table>
+      <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+      <tr><td>openBi</td><td>openBi(): Promise&lt;BiStream&gt;</td><td>Open a bidirectional stream</td></tr>
+      <tr><td>acceptBi</td><td>acceptBi(): Promise&lt;BiStream&gt;</td><td>Accept incoming bidirectional stream</td></tr>
+      <tr><td>openUni</td><td>openUni(): Promise&lt;SendStream&gt;</td><td>Open a unidirectional send stream</td></tr>
+      <tr><td>acceptUni</td><td>acceptUni(): Promise&lt;RecvStream&gt;</td><td>Accept incoming unidirectional stream</td></tr>
+      <tr><td>sendDatagram</td><td>sendDatagram(data: Uint8Array): void</td><td>Send unreliable datagram</td></tr>
+      <tr><td>readDatagram</td><td>readDatagram(): Promise&lt;Uint8Array&gt;</td><td>Read unreliable datagram</td></tr>
+      <tr><td>remoteEndpointId</td><td>remoteEndpointId(): string</td><td>Remote peer's endpoint ID</td></tr>
+      <tr><td>close</td><td>close(error_code, reason): void</td><td>Close with error code</td></tr>
+      <tr><td>stableId</td><td>stableId(): number</td><td>Stable connection identifier</td></tr>
+    </table>
+
+    <h3>BiStream</h3>
+    <table>
+      <tr><th>Property</th><th>Type</th><th>Description</th></tr>
+      <tr><td>send</td><td>SendStream</td><td>Send half</td></tr>
+      <tr><td>recv</td><td>RecvStream</td><td>Receive half</td></tr>
+    </table>
+
+    <h3>SendStream</h3>
+    <table>
+      <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+      <tr><td>write</td><td>write(data: Uint8Array): Promise&lt;number&gt;</td><td>Write data, returns bytes written</td></tr>
+      <tr><td>writeAll</td><td>writeAll(data: Uint8Array): Promise&lt;void&gt;</td><td>Write all data</td></tr>
+      <tr><td>finish</td><td>finish(): void</td><td>Signal end of stream</td></tr>
+    </table>
+
+    <h3>RecvStream</h3>
+    <table>
+      <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+      <tr><td>readChunk</td><td>readChunk(max: number): Promise&lt;Uint8Array | null&gt;</td><td>Read a chunk incrementally</td></tr>
+      <tr><td>readToEnd</td><td>readToEnd(limit: number): Promise&lt;Uint8Array&gt;</td><td>Read all data up to limit</td></tr>
+      <tr><td>stop</td><td>stop(error_code: number): void</td><td>Stop reading with error code</td></tr>
+    </table>
+
+    <h3>BlobStore</h3>
+    <p>In-memory content-addressable storage using BLAKE3 hashing.</p>
+    <table>
+      <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+      <tr><td>constructor</td><td>new BlobStore()</td><td>Create in-memory store</td></tr>
+      <tr><td>addBytes</td><td>addBytes(data: Uint8Array): Promise&lt;string&gt;</td><td>Store data, returns BLAKE3 hash</td></tr>
+      <tr><td>getBytes</td><td>getBytes(hash: string): Promise&lt;Uint8Array&gt;</td><td>Retrieve by hash</td></tr>
+      <tr><td>has</td><td>has(hash: string): Promise&lt;boolean&gt;</td><td>Check existence</td></tr>
+      <tr><td>list</td><td>list(): Promise&lt;string[]&gt;</td><td>List all stored hashes</td></tr>
+    </table>
+
+    <h3>DocEngine</h3>
+    <p>CRDT-based replicated document engine. Creates its own Endpoint, gossip, and blob store internally.</p>
+    <table>
+      <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+      <tr><td>create</td><td>static create(): Promise&lt;DocEngine&gt;</td><td>Create engine with in-memory storage</td></tr>
+      <tr><td>createDoc</td><td>createDoc(): Promise&lt;Doc&gt;</td><td>Create a new document</td></tr>
+      <tr><td>authorDefault</td><td>authorDefault(): Promise&lt;string&gt;</td><td>Get/create default author ID</td></tr>
+      <tr><td>authorCreate</td><td>authorCreate(): Promise&lt;string&gt;</td><td>Create a new author</td></tr>
+      <tr><td>shutdown</td><td>shutdown(): Promise&lt;void&gt;</td><td>Shut down the engine</td></tr>
+    </table>
+
+    <h3>Doc</h3>
+    <p>A replicated key-value document.</p>
+    <table>
+      <tr><th>Method</th><th>Signature</th><th>Description</th></tr>
+      <tr><td>id</td><td>id(): string</td><td>Namespace ID (hex)</td></tr>
+      <tr><td>setBytes</td><td>setBytes(author, key, value): Promise&lt;string&gt;</td><td>Set entry, returns content hash</td></tr>
+      <tr><td>getExact</td><td>getExact(author, key): Promise&lt;Uint8Array | undefined&gt;</td><td>Get entry by author + key</td></tr>
+      <tr><td>del</td><td>del(author, prefix): Promise&lt;number&gt;</td><td>Delete by prefix, returns count</td></tr>
+      <tr><td>close</td><td>close(): Promise&lt;void&gt;</td><td>Close the document</td></tr>
+    </table>
+  </section>
+
+  <!-- Memory Management -->
+  <section>
+    <h2>Memory Management</h2>
+    <p>All WASM objects have a <code>free()</code> method and support <code>Symbol.dispose</code>. Call <code>free()</code> when done to release WASM memory:</p>
+<pre><code>const ep = await Endpoint.create();
+// ... use it ...
+await ep.close();
+ep.free();</code></pre>
+  </section>
+
+  <footer>
+    <a href="https://github.com/SalvatoreT/iroh-ts">GitHub</a> &middot;
+    <a href="https://www.npmjs.com/package/@salvatoret/iroh">npm</a> &middot;
+    MIT License
+  </footer>
+</div>
+
+</body>
+</html>
