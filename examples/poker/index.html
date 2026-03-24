@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>iroh-ts Poker</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; }
-    body { font-family: system-ui, sans-serif; background: #0d4a0d; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+    body { font-family: system-ui, sans-serif; background: #0d4a0d; color: #e0e0e0; height: 100dvh; height: 100vh; display: flex; flex-direction: column; }
+    @supports (height: 100dvh) { body { height: 100dvh; } }
     #status { width: 100%; padding: 8px 16px; background: #062006; font-size: 13px; text-align: center; flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
     #state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #999; }
     body[data-state="connecting"] #state-dot { background: #999; }
@@ -32,14 +33,17 @@
 
     #result { font-size: 18px; color: #ffd700; text-align: center; min-height: 24px; }
 
-    #action-bar { flex-shrink: 0; width: 100%; background: #062006; border-top: 2px solid #0a300a; padding: 10px 16px; display: none; }
+    #bottom-bar { flex-shrink: 0; width: 100%; background: #062006; border-top: 2px solid #0a300a; padding: 14px 16px; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+    #action-bar { display: none; }
     #action-bar .action-inner { display: flex; gap: 8px; justify-content: center; align-items: center; max-width: 480px; margin: 0 auto; }
-    #action-bar button { padding: 12px 24px; border-radius: 8px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; flex: 1; max-width: 140px; }
+    #action-bar button { padding: 14px 24px; border-radius: 8px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; flex: 1; max-width: 140px; min-height: 48px; }
     #action-bar button:disabled { opacity: 0.4; cursor: default; }
     .btn-bet { background: #ffd700; color: #000; }
     .btn-check { background: #4a90d9; color: white; }
     .btn-fold { background: #c0392b; color: white; }
-    #bet-amount { width: 70px; padding: 10px 8px; border-radius: 8px; border: 1px solid #444; background: #0d4a0d; color: #e0e0e0; font-size: 14px; text-align: center; }
+    #bet-amount { width: 70px; padding: 12px 8px; border-radius: 8px; border: 1px solid #444; background: #0d4a0d; color: #e0e0e0; font-size: 15px; text-align: center; }
+    #waiting-bar { display: none; text-align: center; padding: 6px 0; }
+    #waiting-bar .waiting-text { color: #aaa; font-size: 14px; letter-spacing: 0.5px; }
 
     playing-card { display: inline-block; width: clamp(52px, 13vw, 120px); }
     playing-card img { width: 100%; height: auto; display: block; }
@@ -54,12 +58,12 @@
       #players { gap: 6px; }
       .player-info { padding: 4px 8px; font-size: 11px; }
       #result { font-size: 15px; }
-      #action-bar button { padding: 10px 16px; font-size: 14px; }
-      #bet-amount { width: 60px; padding: 8px 6px; font-size: 13px; }
+      #action-bar button { padding: 12px 16px; font-size: 15px; }
+      #bet-amount { width: 60px; padding: 10px 6px; font-size: 14px; }
     }
 
-    #new-hand-bar { display: none; flex-shrink: 0; width: 100%; background: #062006; border-top: 2px solid #0a300a; padding: 10px 16px; text-align: center; }
-    #new-hand-bar button { padding: 12px 32px; border-radius: 8px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; background: #2ecc71; color: #fff; }
+    #new-hand-bar { display: none; text-align: center; padding: 6px 0; }
+    #new-hand-bar button { padding: 14px 32px; border-radius: 8px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; background: #2ecc71; color: #fff; min-height: 48px; }
   </style>
 </head>
 <body data-state="connecting">
@@ -74,15 +78,20 @@
     <div id="players"></div>
     <div id="result"></div>
   </div>
-  <div id="new-hand-bar">
-    <button id="btn-new-hand">New Hand</button>
-  </div>
-  <div id="action-bar">
-    <div class="action-inner">
-      <input id="bet-amount" type="number" value="50" min="1" />
-      <button class="btn-bet" id="btn-bet">Bet</button>
-      <button class="btn-check" id="btn-check">Check</button>
-      <button class="btn-fold" id="btn-fold">Fold</button>
+  <div id="bottom-bar">
+    <div id="new-hand-bar">
+      <button id="btn-new-hand">New Hand</button>
+    </div>
+    <div id="action-bar">
+      <div class="action-inner">
+        <input id="bet-amount" type="number" value="50" min="1" />
+        <button class="btn-bet" id="btn-bet">Bet</button>
+        <button class="btn-check" id="btn-check">Check</button>
+        <button class="btn-fold" id="btn-fold">Fold</button>
+      </div>
+    </div>
+    <div id="waiting-bar">
+      <span class="waiting-text">Waiting for opponent...</span>
     </div>
   </div>
   <script type="module" src="./src/main.ts"></script>
