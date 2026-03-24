@@ -30,6 +30,8 @@ let connGeneration = 0;
 let endpoint: Endpoint | null = null;
 let role: "host" | "joiner" = "host";
 let peerTicket: string | null = null;
+let currentRoundBet = 0;
+let myCurrentBet = 0;
 
 function updateState(newState: ConnState, detail?: string) {
   state = newState;
@@ -68,6 +70,20 @@ function renderState(msg: Extract<HostMessage, { kind: "state" }>, myIndex: numb
   btnBet.disabled = !isMyTurn;
   btnCheck.disabled = !isMyTurn;
   btnFold.disabled = !isMyTurn;
+
+  // Track round bet for button handlers
+  currentRoundBet = msg.roundBet;
+  myCurrentBet = msg.players[myIndex]?.bet ?? 0;
+
+  // Dynamic button labels based on whether there's an outstanding bet
+  if (msg.roundBet > 0) {
+    const toCall = msg.roundBet - (msg.players[myIndex]?.bet ?? 0);
+    btnBet.textContent = "Raise";
+    btnCheck.textContent = `Call $${toCall}`;
+  } else {
+    btnBet.textContent = "Bet";
+    btnCheck.textContent = "Check";
+  }
 }
 
 // --- Messaging ---
@@ -138,6 +154,7 @@ async function hostGame() {
       community: game.community,
       currentPlayer: game.currentPlayer,
       phase: game.phase,
+      roundBet: game.roundBet,
     };
     sendMsg(stateMsg);
     renderState(stateMsg, 0);
@@ -179,8 +196,21 @@ async function hostGame() {
     }
   };
 
-  btnBet.onclick = () => doHostAction({ kind: "action", action: { type: "bet", amount: parseInt(betAmountEl.value) } });
-  btnCheck.onclick = () => doHostAction({ kind: "action", action: { type: "check" } });
+  btnBet.onclick = () => {
+    const amount = parseInt(betAmountEl.value);
+    if (currentRoundBet > 0) {
+      doHostAction({ kind: "action", action: { type: "raise", amount } });
+    } else {
+      doHostAction({ kind: "action", action: { type: "bet", amount } });
+    }
+  };
+  btnCheck.onclick = () => {
+    if (currentRoundBet > 0) {
+      doHostAction({ kind: "action", action: { type: "call" } });
+    } else {
+      doHostAction({ kind: "action", action: { type: "check" } });
+    }
+  };
   btnFold.onclick = () => doHostAction({ kind: "action", action: { type: "fold" } });
 
   btnNewHand.onclick = () => {
@@ -250,8 +280,21 @@ async function hostGame() {
 async function joinGame() {
   const myIndex = 1;
 
-  btnBet.onclick = () => sendMsg({ kind: "action", action: { type: "bet", amount: parseInt(betAmountEl.value) } });
-  btnCheck.onclick = () => sendMsg({ kind: "action", action: { type: "check" } });
+  btnBet.onclick = () => {
+    const amount = parseInt(betAmountEl.value);
+    if (currentRoundBet > 0) {
+      sendMsg({ kind: "action", action: { type: "raise", amount } });
+    } else {
+      sendMsg({ kind: "action", action: { type: "bet", amount } });
+    }
+  };
+  btnCheck.onclick = () => {
+    if (currentRoundBet > 0) {
+      sendMsg({ kind: "action", action: { type: "call" } });
+    } else {
+      sendMsg({ kind: "action", action: { type: "check" } });
+    }
+  };
   btnFold.onclick = () => sendMsg({ kind: "action", action: { type: "fold" } });
 
   const handleHostMessage = (data: Uint8Array) => {
