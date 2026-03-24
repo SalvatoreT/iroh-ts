@@ -163,6 +163,7 @@ footer {
 
 @media (max-width: 640px) {
   .examples-grid { grid-template-columns: 1fr; }
-  table { font-size: 13px; }
-  td:nth-child(2) { display: none; }
+  table { font-size: 13px; table-layout: fixed; }
+  th:nth-child(2), td:nth-child(2) { display: none; }
+  td:first-child { white-space: normal; word-break: break-word; }
 }
