@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Poker Test Harness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { display: flex; height: 100vh; font-family: system-ui; background: #111; }
+    .pane { flex: 1; display: flex; flex-direction: column; }
+    .pane + .pane { border-left: 2px solid #333; }
+    .label { padding: 6px 12px; background: #222; color: #aaa; font-size: 13px; text-align: center; }
+    iframe { flex: 1; border: none; }
+  </style>
+</head>
+<body>
+  <div class="pane">
+    <div class="label">Host</div>
+    <iframe id="host" src="/"></iframe>
+  </div>
+  <div class="pane">
+    <div class="label">Joiner</div>
+    <iframe id="joiner" src="about:blank"></iframe>
+  </div>
+  <script>
+    const hostFrame = document.getElementById("host");
+    const joinerFrame = document.getElementById("joiner");
+    const poll = setInterval(() => {
+      try {
+        const link = hostFrame.contentDocument?.querySelector("#status-text a");
+        if (link) {
+          joinerFrame.src = link.href;
+          clearInterval(poll);
+        }
+      } catch { /* cross-origin, ignore */ }
+    }, 500);
+  </script>
+</body>
+</html>
