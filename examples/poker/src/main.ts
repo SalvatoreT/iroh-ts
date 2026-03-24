@@ -20,6 +20,7 @@ const btnFold = document.getElementById("btn-fold") as HTMLButtonElement;
 const betAmountEl = document.getElementById("bet-amount") as HTMLInputElement;
 const newHandBar = document.getElementById("new-hand-bar")!;
 const btnNewHand = document.getElementById("btn-new-hand") as HTMLButtonElement;
+const waitingBar = document.getElementById("waiting-bar")!;
 
 // --- Module-scope connection state ---
 type ConnState = "connecting" | "connected" | "disconnected" | "reconnecting";
@@ -63,6 +64,7 @@ function renderState(msg: Extract<HostMessage, { kind: "state" }>, myIndex: numb
 
   const isMyTurn = msg.currentPlayer === myIndex && msg.phase !== "showdown" && msg.phase !== "waiting";
   actionsEl.style.display = isMyTurn ? "flex" : "none";
+  waitingBar.style.display = !isMyTurn && msg.phase !== "showdown" && msg.phase !== "waiting" ? "block" : "none";
   btnBet.disabled = !isMyTurn;
   btnCheck.disabled = !isMyTurn;
   btnFold.disabled = !isMyTurn;
@@ -163,6 +165,7 @@ async function hostGame() {
     sendMsg({ kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot });
     resultEl.textContent = `${result.name} wins with ${result.handName}! ($${game.pot})`;
     actionsEl.style.display = "none";
+    waitingBar.style.display = "none";
     newHandBar.style.display = "flex";
   };
 
@@ -266,6 +269,7 @@ async function joinGame() {
       case "result":
         resultEl.textContent = `${msg.winner} wins with ${msg.winningHand}! ($${msg.pot})`;
         actionsEl.style.display = "none";
+        waitingBar.style.display = "none";
         break;
       case "new-hand":
         statusTextEl.textContent = "New hand starting...";
