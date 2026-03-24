@@ -10,12 +10,17 @@ export interface Card {
   suit: Suit;
 }
 
-export type PlayerAction = { type: "bet"; amount: number } | { type: "fold" } | { type: "check" };
+export type PlayerAction =
+  | { type: "bet"; amount: number }
+  | { type: "call" }
+  | { type: "raise"; amount: number }
+  | { type: "fold" }
+  | { type: "check" };
 
 // Messages from host → player
 export type HostMessage =
   | { kind: "deal"; hand: Card[]; community: Card[] }
-  | { kind: "state"; players: PlayerState[]; pot: number; community: Card[]; currentPlayer: number; phase: Phase }
+  | { kind: "state"; players: PlayerState[]; pot: number; community: Card[]; currentPlayer: number; phase: Phase; roundBet: number }
   | { kind: "result"; winner: string; winningHand: string; pot: number }
   | { kind: "joined"; playerIndex: number; playerCount: number }
   | { kind: "new-hand" };

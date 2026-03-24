@@ -38,6 +38,8 @@ export class PokerGame {
   pot = 0;
   currentPlayer = 0;
   phase: Phase = "waiting";
+  dealerIndex = 0;
+  roundBet = 0;
 
   addPlayer(name: string): number {
     this.players.push({ name, chips: 1000, hand: [], bet: 0, folded: false, acted: false });
@@ -45,9 +47,11 @@ export class PokerGame {
   }
 
   deal() {
+    this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
     this.deck = createDeck();
     this.community = [];
     this.pot = 0;
+    this.roundBet = 0;
     this.phase = "preflop";
     for (const p of this.players) {
       p.hand = [this.deck.pop()!, this.deck.pop()!];
@@ -55,7 +59,8 @@ export class PokerGame {
       p.folded = false;
       p.acted = false;
     }
-    this.currentPlayer = 0;
+    // Heads-up: dealer acts first preflop
+    this.currentPlayer = this.dealerIndex;
     this.skipFolded();
   }
 
@@ -74,17 +79,49 @@ export class PokerGame {
     const player = this.players[playerIndex];
     if (player.folded) return false;
 
+    // Validate and process action
     switch (action.type) {
-      case "bet":
+      case "check":
+        if (this.roundBet > 0) return false; // Can't check when there's a bet
+        break;
+      case "bet": {
+        if (this.roundBet > 0) return false; // Must raise, not bet, when bet is pending
         const amount = Math.min(action.amount, player.chips);
         player.chips -= amount;
         player.bet += amount;
         this.pot += amount;
+        this.roundBet = player.bet;
+        // Other active players must respond
+        for (const p of this.players) {
+          if (p !== player && !p.folded) p.acted = false;
+        }
         break;
+      }
+      case "call": {
+        if (this.roundBet <= 0) return false; // Nothing to call
+        const toCall = Math.min(this.roundBet - player.bet, player.chips);
+        player.chips -= toCall;
+        player.bet += toCall;
+        this.pot += toCall;
+        break;
+      }
+      case "raise": {
+        if (this.roundBet <= 0) return false; // Must bet, not raise, when no bet pending
+        const toCall = this.roundBet - player.bet;
+        const raiseExtra = Math.min(action.amount, player.chips - toCall);
+        const total = Math.min(toCall + Math.max(raiseExtra, 0), player.chips);
+        player.chips -= total;
+        player.bet += total;
+        this.pot += total;
+        this.roundBet = player.bet;
+        // Other active players must respond
+        for (const p of this.players) {
+          if (p !== player && !p.folded) p.acted = false;
+        }
+        break;
+      }
       case "fold":
         player.folded = true;
-        break;
-      case "check":
         break;
     }
     player.acted = true;
@@ -107,7 +144,11 @@ export class PokerGame {
   }
 
   private advancePhase() {
-    for (const p of this.players) p.acted = false;
+    for (const p of this.players) {
+      p.acted = false;
+      p.bet = 0;
+    }
+    this.roundBet = 0;
 
     switch (this.phase) {
       case "preflop":
@@ -126,7 +167,8 @@ export class PokerGame {
         this.phase = "showdown";
         return;
     }
-    this.currentPlayer = 0;
+    // Postflop: non-dealer acts first (heads-up)
+    this.currentPlayer = (this.dealerIndex + 1) % this.players.length;
     this.skipFolded();
   }
 
