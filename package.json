@@ -41,6 +41,7 @@
     "build:wasm": "pnpm build:wasm:node && pnpm build:wasm:browser && rm -f crate/pkg/nodejs/.gitignore crate/pkg/bundler/.gitignore",
     "build:ts": "tsc",
     "build": "pnpm build:wasm && pnpm build:ts",
+    "demo": "pnpm --filter iroh-echo-server start",
     "test": "vitest run",
     "test:watch": "vitest"
   },
