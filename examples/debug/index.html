@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iroh debug</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --border: #2a2a4a;
+      --text: #e0e0e0;
+      --text-dim: #888;
+      --accent: #7b68ee;
+      --cat-endpoint: #5b9bd5;
+      --cat-connection: #70c97a;
+      --cat-stream: #b07cd8;
+      --cat-datagram: #e8a838;
+      --cat-blob: #4ecdc4;
+      --cat-doc: #f0d264;
+      --cat-error: #e85555;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 18px;
+      color: var(--accent);
+    }
+
+    .info-pill {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-family: monospace;
+      cursor: pointer;
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .info-pill:hover { border-color: var(--accent); }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .status-dot.gray { background: #888; }
+    .status-dot.green { background: #70c97a; }
+    .status-dot.red { background: #e85555; }
+    .status-dot.orange { background: #e8a838; }
+
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      font-size: 13px;
+    }
+
+    .filters {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .filters label {
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .filters label input { cursor: pointer; }
+
+    .filter-cat {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .toolbar button {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .toolbar button:hover { border-color: var(--accent); }
+
+    #log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 20px;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .log-time {
+      color: var(--text-dim);
+      flex-shrink: 0;
+      font-size: 11px;
+    }
+
+    .log-cat {
+      flex-shrink: 0;
+      font-weight: 600;
+      font-size: 11px;
+      width: 100px;
+      text-align: right;
+    }
+
+    .log-dir {
+      flex-shrink: 0;
+      color: var(--text-dim);
+      width: 20px;
+      text-align: center;
+    }
+
+    .log-msg { word-break: break-all; }
+
+    .log-detail {
+      margin-left: 160px;
+      color: var(--text-dim);
+      font-size: 11px;
+      word-break: break-all;
+    }
+
+    .log-entry.hidden { display: none; }
+
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    footer input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+
+    footer input:focus { outline: none; border-color: var(--accent); }
+
+    footer button {
+      background: var(--accent);
+      border: none;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    footer button:disabled { opacity: 0.4; cursor: default; }
+
+    #join-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #join-bar.visible { display: flex; }
+
+    #join-bar a {
+      color: var(--accent);
+      font-family: monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>iroh debug</h1>
+  <div id="endpoint-pill" class="info-pill" title="Click to copy endpoint ID">-</div>
+  <div id="relay-pill" class="info-pill" title="Relay URL">-</div>
+  <div id="status-bar">
+    <span id="status-dot" class="status-dot gray"></span>
+    <span id="status-text">Initializing...</span>
+  </div>
+</header>
+
+<div id="join-bar">
+  <span style="font-size:13px;">Share to connect:</span>
+  <a id="join-link" href="#" target="_blank">-</a>
+</div>
+
+<div class="filters">
+  <label><input type="checkbox" data-cat="endpoint" checked><span class="filter-cat" style="background:var(--cat-endpoint)"></span> endpoint</label>
+  <label><input type="checkbox" data-cat="connection" checked><span class="filter-cat" style="background:var(--cat-connection)"></span> connection</label>
+  <label><input type="checkbox" data-cat="stream" checked><span class="filter-cat" style="background:var(--cat-stream)"></span> stream</label>
+  <label><input type="checkbox" data-cat="datagram" checked><span class="filter-cat" style="background:var(--cat-datagram)"></span> datagram</label>
+  <label><input type="checkbox" data-cat="blob" checked><span class="filter-cat" style="background:var(--cat-blob)"></span> blob</label>
+  <label><input type="checkbox" data-cat="doc" checked><span class="filter-cat" style="background:var(--cat-doc)"></span> doc</label>
+  <label><input type="checkbox" data-cat="error" checked><span class="filter-cat" style="background:var(--cat-error)"></span> error</label>
+  <div class="toolbar">
+    <button id="btn-clear">Clear</button>
+    <button id="btn-copy">Copy Log</button>
+  </div>
+</div>
+
+<div id="log"></div>
+
+<footer>
+  <input id="msg-input" type="text" placeholder="Send a custom message to peer..." disabled>
+  <button id="send-btn" disabled>Send</button>
+</footer>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
