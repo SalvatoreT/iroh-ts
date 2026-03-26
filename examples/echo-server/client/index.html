@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iroh Echo Client</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; height: 100vh; display: flex; flex-direction: column; }
+      #status { padding: 12px 16px; background: #16213e; border-bottom: 1px solid #0f3460; font-size: 14px; }
+      #status[data-state="connected"] { border-bottom-color: #0a0; }
+      #status[data-state="disconnected"] { border-bottom-color: #a00; }
+      #connect-bar { padding: 12px 16px; background: #16213e; display: flex; gap: 8px; }
+      #connect-bar input { flex: 1; padding: 8px 12px; border: 1px solid #0f3460; border-radius: 6px; background: #1a1a2e; color: #eee; font-size: 14px; font-family: monospace; }
+      #connect-bar button { padding: 8px 16px; background: #0f3460; color: #eee; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+      #connect-bar button:hover { background: #1a5276; }
+      #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+      .msg { padding: 8px 12px; border-radius: 8px; max-width: 80%; font-size: 14px; }
+      .msg.self { align-self: flex-end; background: #0f3460; }
+      .msg.server { align-self: flex-start; background: #2d4a22; }
+      .msg.system { align-self: center; color: #888; font-size: 12px; }
+      #input-bar { padding: 12px 16px; background: #16213e; border-top: 1px solid #0f3460; display: flex; gap: 8px; }
+      #input-bar input { flex: 1; padding: 8px 12px; border: 1px solid #0f3460; border-radius: 6px; background: #1a1a2e; color: #eee; font-size: 14px; }
+      #input-bar button { padding: 8px 16px; background: #0f3460; color: #eee; border: none; border-radius: 6px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div id="status">Initializing...</div>
+    <div id="connect-bar">
+      <input id="server-id" type="text" placeholder="Paste server endpoint ID here..." />
+      <button id="connect-btn">Connect</button>
+    </div>
+    <div id="messages"></div>
+    <div id="input-bar">
+      <input id="msg-input" type="text" placeholder="Type a message..." disabled />
+      <button id="send-btn" disabled>Send</button>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
