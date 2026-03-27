@@ -12,6 +12,9 @@
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
+  "bin": {
+    "iroh": "./bin/cli.js"
+  },
   "main": "./dist/node.js",
   "types": "./dist/node.d.ts",
   "exports": {
@@ -33,7 +36,8 @@
   "files": [
     "dist",
     "crate/pkg/nodejs",
-    "crate/pkg/bundler"
+    "crate/pkg/bundler",
+    "bin"
   ],
   "scripts": {
     "build:wasm:node": "CC=${CC:-clang} AR=${AR:-ar} wasm-pack build crate --target nodejs --out-dir pkg/nodejs",
