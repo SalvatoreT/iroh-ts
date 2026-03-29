@@ -6,14 +6,14 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SalvatoreT/iroh-ts"
+    "url": "git+https://github.com/SalvatoreT/iroh-ts.git"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
   "bin": {
-    "iroh": "./bin/cli.js"
+    "iroh": "bin/cli.js"
   },
   "main": "./dist/node.js",
   "types": "./dist/node.d.ts",
