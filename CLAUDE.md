@@ -69,13 +69,49 @@ Tests are integration tests that create real iroh endpoints and connect them ove
 
 ## Commit Convention
 
-All commit messages must use [Conventional Commits](https://www.conventionalcommits.org/) format:
+All commit messages **must** use [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) format:
 
 ```
 <type>(<optional scope>): <description>
+
+[optional body]
+
+[optional footer(s)]
 ```
 
-Common types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `style`, `perf`, `build`.
+### Rules
+
+- **type** is required. Allowed types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `style`, `perf`, `build`.
+- **scope** is optional and should be a noun describing the section of the codebase (e.g., `wasm`, `endpoint`, `blobs`, `ci`).
+- **description** is required, lowercase, imperative mood, no period at the end.
+- **body** is optional. Use it for additional context when the description alone is not sufficient. Separate from the description with a blank line.
+- **footer(s)** are optional. Use `BREAKING CHANGE: <description>` in the footer to indicate a breaking API change (this correlates with a MAJOR version bump in SemVer). Other footers follow the `key: value` format (e.g., `Reviewed-by: Name`).
+- Appending `!` after the type/scope (e.g., `feat!:` or `feat(endpoint)!:`) also indicates a breaking change and may be used with or without a `BREAKING CHANGE:` footer.
+- `feat` correlates with a MINOR version bump; `fix` correlates with a PATCH version bump.
+
+### Examples
+
+```
+feat(endpoint): add support for custom ALPN protocols
+```
+
+```
+fix(blobs): prevent double-free on blob handle drop
+```
+
+```
+docs: update CLAUDE.md with full conventional commits spec
+```
+
+```
+feat(endpoint)!: change accept() to return Result instead of Option
+
+BREAKING CHANGE: accept() now returns a Result, callers must handle the error variant.
+```
+
+```
+chore: upgrade wasm-bindgen to 0.2.100
+```
 
 ## Pull Request Workflow
 
