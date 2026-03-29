@@ -26,6 +26,8 @@ const statusDot = document.getElementById("status-dot")!;
 const statusText = document.getElementById("status-text")!;
 const joinBar = document.getElementById("join-bar")!;
 const joinLink = document.getElementById("join-link") as HTMLAnchorElement;
+const npxCmd = document.getElementById("npx-cmd")!;
+const btnCopyNpx = document.getElementById("btn-copy-npx")!;
 const inputEl = document.getElementById("msg-input") as HTMLInputElement;
 const sendBtn = document.getElementById("send-btn") as HTMLButtonElement;
 const btnClear = document.getElementById("btn-clear")!;
@@ -60,6 +62,15 @@ let sendStream: SendStream | null = null;
 let role: "host" | "joiner" = "host";
 let peerTicket: string | null = null;
 
+// Serialize all writes to sendStream to prevent frame interleaving.
+let writeQueue: Promise<void> = Promise.resolve();
+
+function enqueueWrite(fn: () => Promise<void>): Promise<void> {
+  const next = writeQueue.then(fn, () => fn());
+  writeQueue = next.then(() => {}, () => {});
+  return next;
+}
+
 function setStatus(state: "connecting" | "connected" | "disconnected", detail: string) {
   statusText.textContent = detail;
   statusDot.className =
@@ -81,7 +92,10 @@ async function doSend() {
   inputEl.value = "";
   const msg: DebugMessage = { kind: "data", payload: text, timestamp: Date.now() };
   try {
-    const bytes = await writeFramed(sendStream, msg);
+    let bytes = 0;
+    await enqueueWrite(async () => {
+      bytes = await writeFramed(sendStream!, msg);
+    });
     log({
       timestamp: Date.now(),
       category: "stream",
@@ -139,6 +153,7 @@ async function handleConnection(conn: Connection) {
     }
 
     sendStream = stream.send;
+    writeQueue = Promise.resolve();
 
     // Joiner initiates the ping sequence
     if (role === "joiner") {
@@ -156,18 +171,20 @@ async function handleConnection(conn: Connection) {
 
     // Read incoming messages
     readFramed(stream.recv, (msg, rawSize) => {
+      const from = msg.kind === "data" ? ` from ${shortId(remoteId)}` : "";
       log({
         timestamp: Date.now(),
         category: "stream",
         direction: "recv",
-        message: `Received ${msg.kind} (${rawSize} bytes framed)`,
+        message: `Received ${msg.kind}${from} (${rawSize} bytes framed)`,
         detail: JSON.stringify(msg),
       });
 
       // Host echoes pings as pongs
       if (msg.kind === "ping" && sendStream) {
         const pong: DebugMessage = { kind: "pong", seq: msg.seq, timestamp: Date.now() };
-        writeFramed(sendStream, pong).then((bytes) => {
+        enqueueWrite(async () => {
+          const bytes = await writeFramed(sendStream!, pong);
           log({
             timestamp: Date.now(),
             category: "stream",
@@ -529,9 +546,14 @@ async function main() {
     hostAddr.free();
     const joinUrl = `${window.location.origin}${window.location.pathname}?ticket=${hostId}`;
 
+    const npxCommand = `npx @salvatoret/iroh debug --mode connect ${hostId}`;
+
     joinBar.classList.add("visible");
     joinLink.href = joinUrl;
     joinLink.textContent = joinUrl;
+    npxCmd.textContent = npxCommand;
+    npxCmd.addEventListener("click", () => navigator.clipboard.writeText(npxCommand));
+    btnCopyNpx.addEventListener("click", () => navigator.clipboard.writeText(npxCommand));
 
     log({ timestamp: Date.now(), category: "endpoint", direction: "local", message: `Share URL: ${joinUrl}` });
 

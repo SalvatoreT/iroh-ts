@@ -83,6 +83,15 @@ async function readFramed(
 
 // --- Connection handler ---
 
+// Serialize all writes to a send stream to prevent frame interleaving.
+let writeQueue: Promise<void> = Promise.resolve();
+
+function enqueueWrite(fn: () => Promise<void>): Promise<void> {
+  const next = writeQueue.then(fn, () => fn());
+  writeQueue = next.then(() => {}, () => {});
+  return next;
+}
+
 async function handleConnection(conn: Connection) {
   const remoteId = conn.remoteEndpointId();
   const alpn = conn.alpn();
@@ -112,12 +121,15 @@ async function handleConnection(conn: Connection) {
       const stream = await conn.acceptBi();
       log("stream", "<-", "acceptBi() resolved");
       sendStream = stream.send;
+      writeQueue = Promise.resolve();
 
       readFramed(stream.recv, (msg, rawSize) => {
-        log("stream", "<-", `Received ${msg.kind} (${rawSize} bytes)`, JSON.stringify(msg));
+        const from = msg.kind === "data" ? ` from ${shortId(remoteId)}` : "";
+        log("stream", "<-", `Received ${msg.kind}${from} (${rawSize} bytes)`, JSON.stringify(msg));
         if (msg.kind === "ping") {
           const pong = { kind: "pong", seq: msg.seq, timestamp: Date.now() };
-          writeFramed(sendStream, pong).then((bytes) => {
+          enqueueWrite(async () => {
+            const bytes = await writeFramed(sendStream, pong);
             log("stream", "->", `Sent pong #${msg.seq} (${bytes} bytes)`);
           });
         }
@@ -139,7 +151,8 @@ async function handleConnection(conn: Connection) {
       }
 
       readFramed(stream.recv, (msg, rawSize) => {
-        log("stream", "<-", `Received ${msg.kind} (${rawSize} bytes)`, JSON.stringify(msg));
+        const from = msg.kind === "data" ? ` from ${shortId(remoteId)}` : "";
+        log("stream", "<-", `Received ${msg.kind}${from} (${rawSize} bytes)`, JSON.stringify(msg));
       }).then(() => {
         log("stream", "**", "Bi stream recv ended (FIN)");
       }).catch((err) => {
