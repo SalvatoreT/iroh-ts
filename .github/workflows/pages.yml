@@ -60,6 +60,16 @@ jobs:
           mkdir -p ../../_site/examples
           cp -r dist ../../_site/examples/poker
 
+      # Build debug example with published npm package
+      - name: Build debug example
+        working-directory: examples/debug
+        run: |
+          sed -i 's/"@salvatoret\/iroh": "workspace:\*"/"@salvatoret\/iroh": "latest"/' package.json
+          pnpm install --no-frozen-lockfile
+          BASE_PATH=/iroh-ts/examples/debug/ pnpm build
+          mkdir -p ../../_site/examples
+          cp -r dist ../../_site/examples/debug
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
