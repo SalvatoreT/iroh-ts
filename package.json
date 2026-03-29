@@ -37,7 +37,8 @@
     "dist",
     "crate/pkg/nodejs",
     "crate/pkg/bundler",
-    "bin"
+    "bin",
+    "examples"
   ],
   "scripts": {
     "build:wasm:node": "CC=${CC:-clang} AR=${AR:-ar} wasm-pack build crate --target nodejs --out-dir pkg/nodejs",

@@ -76,3 +76,7 @@ All commit messages must use [Conventional Commits](https://www.conventionalcomm
 ```
 
 Common types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `style`, `perf`, `build`.
+
+## Pull Request Workflow
+
+Each PR must contain exactly **one squashed commit**. Squash all work into a single commit before pushing.
