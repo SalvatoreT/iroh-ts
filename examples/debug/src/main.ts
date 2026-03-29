@@ -28,6 +28,7 @@ const joinBar = document.getElementById("join-bar")!;
 const joinLink = document.getElementById("join-link") as HTMLAnchorElement;
 const npxCmd = document.getElementById("npx-cmd")!;
 const btnCopyNpx = document.getElementById("btn-copy-npx")!;
+const joinersBar = document.getElementById("joiners-bar")!;
 const inputEl = document.getElementById("msg-input") as HTMLInputElement;
 const sendBtn = document.getElementById("send-btn") as HTMLButtonElement;
 const btnClear = document.getElementById("btn-clear")!;
@@ -62,6 +63,14 @@ let sendStream: SendStream | null = null;
 let role: "host" | "joiner" = "host";
 let peerTicket: string | null = null;
 
+// Track multiple joiners (host mode)
+interface JoinerInfo {
+  sendStream: SendStream;
+  writeQueue: Promise<void>;
+  chipEl: HTMLElement;
+}
+const joiners = new Map<string, JoinerInfo>();
+
 // Serialize all writes to sendStream to prevent frame interleaving.
 let writeQueue: Promise<void> = Promise.resolve();
 
@@ -69,6 +78,50 @@ function enqueueWrite(fn: () => Promise<void>): Promise<void> {
   const next = writeQueue.then(fn, () => fn());
   writeQueue = next.then(() => {}, () => {});
   return next;
+}
+
+function enqueueJoinerWrite(joinerId: string, fn: () => Promise<void>): Promise<void> {
+  const joiner = joiners.get(joinerId);
+  if (!joiner) return Promise.resolve();
+  const next = joiner.writeQueue.then(fn, () => fn());
+  joiner.writeQueue = next.then(() => {}, () => {});
+  return next;
+}
+
+function addJoinerChip(remoteId: string): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = "joiner-chip";
+  chip.title = remoteId;
+  chip.innerHTML = `<span class="status-dot green"></span>${shortId(remoteId)}`;
+  joinersBar.appendChild(chip);
+  return chip;
+}
+
+function setJoinerDisconnected(remoteId: string) {
+  const joiner = joiners.get(remoteId);
+  if (joiner) {
+    const dot = joiner.chipEl.querySelector(".status-dot");
+    if (dot) dot.className = "status-dot red";
+    joiners.delete(remoteId);
+  }
+  updateHostInputState();
+}
+
+function updateHostInputState() {
+  if (role !== "host") return;
+  const hasConnected = joiners.size > 0;
+  inputEl.disabled = !hasConnected;
+  sendBtn.disabled = !hasConnected;
+  if (hasConnected) {
+    statusText.textContent = `${joiners.size} joiner${joiners.size > 1 ? "s" : ""} connected`;
+    statusDot.className = "status-dot green";
+  } else if (joinersBar.children.length > 0) {
+    statusText.textContent = "All joiners disconnected";
+    statusDot.className = "status-dot red";
+  } else {
+    statusText.textContent = "Waiting for peer...";
+    statusDot.className = "status-dot orange";
+  }
 }
 
 function setStatus(state: "connecting" | "connected" | "disconnected", detail: string) {
@@ -88,27 +141,56 @@ sendBtn.addEventListener("click", doSend);
 
 async function doSend() {
   const text = inputEl.value.trim();
-  if (!text || !sendStream) return;
-  inputEl.value = "";
-  const msg: DebugMessage = { kind: "data", payload: text, timestamp: Date.now() };
-  try {
-    let bytes = 0;
-    await enqueueWrite(async () => {
-      bytes = await writeFramed(sendStream!, msg);
-    });
-    log({
-      timestamp: Date.now(),
-      category: "stream",
-      direction: "send",
-      message: `Sent custom data: "${text}" (${bytes} bytes framed)`,
-    });
-  } catch (err) {
-    log({
-      timestamp: Date.now(),
-      category: "error",
-      direction: "local",
-      message: `Send failed: ${err instanceof Error ? err.message : String(err)}`,
-    });
+  if (!text) return;
+
+  if (role === "host") {
+    if (joiners.size === 0) return;
+    inputEl.value = "";
+    const msg: DebugMessage = { kind: "data", payload: text, timestamp: Date.now() };
+    for (const [id, joiner] of joiners) {
+      try {
+        let bytes = 0;
+        await enqueueJoinerWrite(id, async () => {
+          bytes = await writeFramed(joiner.sendStream, msg);
+        });
+        log({
+          timestamp: Date.now(),
+          category: "stream",
+          direction: "send",
+          message: `Sent custom data to ${shortId(id)}: "${text}" (${bytes} bytes framed)`,
+        });
+      } catch (err) {
+        log({
+          timestamp: Date.now(),
+          category: "error",
+          direction: "local",
+          message: `Send to ${shortId(id)} failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+  } else {
+    if (!sendStream) return;
+    inputEl.value = "";
+    const msg: DebugMessage = { kind: "data", payload: text, timestamp: Date.now() };
+    try {
+      let bytes = 0;
+      await enqueueWrite(async () => {
+        bytes = await writeFramed(sendStream!, msg);
+      });
+      log({
+        timestamp: Date.now(),
+        category: "stream",
+        direction: "send",
+        message: `Sent custom data: "${text}" (${bytes} bytes framed)`,
+      });
+    } catch (err) {
+      log({
+        timestamp: Date.now(),
+        category: "error",
+        direction: "local",
+        message: `Send failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
   }
 }
 
@@ -130,13 +212,23 @@ async function handleConnection(conn: Connection) {
     log({ timestamp: Date.now(), category: "connection", direction: "local", message: `Close reason (already set): ${closeReason}` });
   }
 
-  setStatus("connected", `Connected to ${shortId(remoteId)}`);
+  if (role === "host") {
+    const chip = addJoinerChip(remoteId);
+    joiners.set(remoteId, { sendStream: null!, writeQueue: Promise.resolve(), chipEl: chip });
+    updateHostInputState();
+  } else {
+    setStatus("connected", `Connected to ${shortId(remoteId)}`);
+  }
 
   // Monitor connection closure in background
   conn.closed().then((reason) => {
-    log({ timestamp: Date.now(), category: "connection", direction: "local", message: `Connection closed: ${reason}` });
-    setStatus("disconnected", "Disconnected");
-    sendStream = null;
+    log({ timestamp: Date.now(), category: "connection", direction: "local", message: `Connection ${shortId(remoteId)} closed: ${reason}` });
+    if (role === "host") {
+      setJoinerDisconnected(remoteId);
+    } else {
+      setStatus("disconnected", "Disconnected");
+      sendStream = null;
+    }
   });
 
   // --- Bi-directional stream test ---
@@ -152,8 +244,16 @@ async function handleConnection(conn: Connection) {
       log({ timestamp: Date.now(), category: "stream", direction: "send", message: "openBi() resolved — bi stream opened" });
     }
 
-    sendStream = stream.send;
-    writeQueue = Promise.resolve();
+    if (role === "host") {
+      const joiner = joiners.get(remoteId);
+      if (joiner) {
+        joiner.sendStream = stream.send;
+        joiner.writeQueue = Promise.resolve();
+      }
+    } else {
+      sendStream = stream.send;
+      writeQueue = Promise.resolve();
+    }
 
     // Joiner initiates the ping sequence
     if (role === "joiner") {
@@ -181,17 +281,32 @@ async function handleConnection(conn: Connection) {
       });
 
       // Host echoes pings as pongs
-      if (msg.kind === "ping" && sendStream) {
+      if (msg.kind === "ping") {
         const pong: DebugMessage = { kind: "pong", seq: msg.seq, timestamp: Date.now() };
-        enqueueWrite(async () => {
-          const bytes = await writeFramed(sendStream!, pong);
-          log({
-            timestamp: Date.now(),
-            category: "stream",
-            direction: "send",
-            message: `Sent pong #${msg.seq} (${bytes} bytes framed)`,
+        if (role === "host") {
+          const joiner = joiners.get(remoteId);
+          if (joiner) {
+            enqueueJoinerWrite(remoteId, async () => {
+              const bytes = await writeFramed(joiner.sendStream, pong);
+              log({
+                timestamp: Date.now(),
+                category: "stream",
+                direction: "send",
+                message: `Sent pong #${msg.seq} (${bytes} bytes framed)`,
+              });
+            });
+          }
+        } else if (sendStream) {
+          enqueueWrite(async () => {
+            const bytes = await writeFramed(sendStream!, pong);
+            log({
+              timestamp: Date.now(),
+              category: "stream",
+              direction: "send",
+              message: `Sent pong #${msg.seq} (${bytes} bytes framed)`,
+            });
           });
-        });
+        }
       }
     }).then(() => {
       log({ timestamp: Date.now(), category: "stream", direction: "local", message: "Bi stream recv ended (FIN)" });
@@ -557,7 +672,7 @@ async function main() {
 
     log({ timestamp: Date.now(), category: "endpoint", direction: "local", message: `Share URL: ${joinUrl}` });
 
-    setStatus("connecting", "Waiting for peer...");
+    updateHostInputState();
     await acceptLoop();
   }
 }
