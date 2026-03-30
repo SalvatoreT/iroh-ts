@@ -84,6 +84,30 @@
       font-size: 13px;
     }
 
+    #joiners-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 8px;
+    }
+
+    .joiner-chip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-family: monospace;
+    }
+
+    .joiner-chip .status-dot {
+      width: 6px;
+      height: 6px;
+    }
+
     .filters {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -238,6 +262,7 @@
   <div id="status-bar">
     <span id="status-dot" class="status-dot gray"></span>
     <span id="status-text">Initializing...</span>
+    <div id="joiners-bar"></div>
   </div>
 </header>
 
