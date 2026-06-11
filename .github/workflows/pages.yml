@@ -21,18 +21,44 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Install Rust toolchain
+        # https://github.com/dtolnay/rust-toolchain/commit/3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
-          version: 10
+          toolchain: stable
+          targets: wasm32-unknown-unknown
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v5
         with:
-          node-version: 22
-          cache: pnpm
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crate/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('crate/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # Pinned: pnpm "latest" enables a minimum-release-age supply-chain
+      # policy that rejects lockfile entries published within 24h.
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.22.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - run: pnpm install
+
+      # Build the workspace package so the examples link against the
+      # source at this commit rather than the published npm release.
+      - run: pnpm build
 
       # Assemble docs site
       - name: Copy docs to site output
@@ -40,32 +66,23 @@ jobs:
           mkdir -p _site
           cp docs/index.html docs/style.css _site/
 
-      # Build chat example with published npm package
       - name: Build chat example
         working-directory: examples/chat
         run: |
-          sed -i 's/"@salvatoret\/iroh": "workspace:\*"/"@salvatoret\/iroh": "latest"/' package.json
-          pnpm install --no-frozen-lockfile
           BASE_PATH=/iroh-ts/examples/chat/ pnpm build
           mkdir -p ../../_site/examples
           cp -r dist ../../_site/examples/chat
 
-      # Build poker example with published npm package
       - name: Build poker example
         working-directory: examples/poker
         run: |
-          sed -i 's/"@salvatoret\/iroh": "workspace:\*"/"@salvatoret\/iroh": "latest"/' package.json
-          pnpm install --no-frozen-lockfile
           BASE_PATH=/iroh-ts/examples/poker/ pnpm build
           mkdir -p ../../_site/examples
           cp -r dist ../../_site/examples/poker
 
-      # Build debug example with published npm package
       - name: Build debug example
         working-directory: examples/debug
         run: |
-          sed -i 's/"@salvatoret\/iroh": "workspace:\*"/"@salvatoret\/iroh": "latest"/' package.json
-          pnpm install --no-frozen-lockfile
           BASE_PATH=/iroh-ts/examples/debug/ pnpm build
           mkdir -p ../../_site/examples
           cp -r dist ../../_site/examples/debug
