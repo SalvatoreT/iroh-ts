@@ -1,16 +1,8 @@
-import { Endpoint, type Connection, type SendStream, type RecvStream } from "@salvatoret/iroh";
+import { Endpoint, writeFramed, readFramed, type Connection } from "@salvatoret/iroh";
 
 const ALPN = new TextEncoder().encode("iroh-echo/1");
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-
-async function writeMsg(send: SendStream, text: string) {
-  const bytes = encoder.encode(text);
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
-}
 
 async function handleConnection(conn: Connection) {
   const remoteId = conn.remoteEndpointId().slice(0, 8);
@@ -18,28 +10,16 @@ async function handleConnection(conn: Connection) {
 
   try {
     const stream = await conn.acceptBi();
-    const send = stream.send;
-    const recv = stream.recv;
 
-    const buf: number[] = [];
-    while (true) {
-      const chunk = await recv.readChunk(4096);
-      if (chunk === undefined || chunk === null) break;
-
-      for (let i = 0; i < chunk.length; i++) buf.push(chunk[i]);
-
-      while (buf.length >= 4) {
-        const len = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-        if (buf.length < 4 + len) break;
-        const msgBytes = new Uint8Array(buf.splice(0, 4 + len).slice(4));
-        const text = decoder.decode(msgBytes);
-        const timestamp = new Date().toISOString().slice(11, 19);
-        const reply = `[${timestamp}] echo: ${text}`;
-        console.log(`  <- ${text}`);
-        console.log(`  -> ${reply}`);
-        await writeMsg(send, reply);
-      }
+    for await (const frame of readFramed(stream.recv)) {
+      const text = decoder.decode(frame);
+      const timestamp = new Date().toISOString().slice(11, 19);
+      const reply = `[${timestamp}] echo: ${text}`;
+      console.log(`  <- ${text}`);
+      console.log(`  -> ${reply}`);
+      await writeFramed(stream.send, encoder.encode(reply));
     }
+    console.log(`[disconnected] peer ${remoteId}... (stream finished)`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.log(`[disconnected] peer ${remoteId}... (${msg})`);

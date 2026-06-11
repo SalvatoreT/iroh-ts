@@ -1,3 +1,10 @@
+import {
+  writeFramed as writeFrame,
+  readFramed as readFrames,
+  type FramedSendStream,
+  type FramedRecvStream,
+} from "@salvatoret/iroh";
+
 export const ALPN = new TextEncoder().encode("iroh-debug/1");
 
 export type DebugMessage =
@@ -22,34 +29,19 @@ export function decodeMsg(data: Uint8Array): DebugMessage {
 
 /** Write a length-prefixed message to a SendStream. */
 export async function writeFramed(
-  send: { writeAll(data: Uint8Array): Promise<void> },
+  send: FramedSendStream,
   msg: DebugMessage,
 ): Promise<number> {
-  const bytes = encodeMsg(msg);
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
-  return 4 + bytes.length;
+  return writeFrame(send, encodeMsg(msg));
 }
 
 /** Read length-prefixed messages from a RecvStream, calling handler for each. */
 export async function readFramed(
-  recv: { readChunk(max: number): Promise<Uint8Array | null | undefined> },
+  recv: FramedRecvStream,
   handler: (msg: DebugMessage, rawSize: number) => void,
 ): Promise<void> {
-  const buf: number[] = [];
-  while (true) {
-    const chunk = await recv.readChunk(4096);
-    if (chunk === undefined || chunk === null) break;
-    for (let i = 0; i < chunk.length; i++) buf.push(chunk[i]);
-    while (buf.length >= 4) {
-      const len = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-      if (buf.length < 4 + len) break;
-      const raw = buf.splice(0, 4 + len);
-      const msgBytes = new Uint8Array(raw.slice(4));
-      handler(decodeMsg(msgBytes), 4 + len);
-    }
+  for await (const frame of readFrames(recv)) {
+    handler(decodeMsg(frame), 4 + frame.length);
   }
 }
 

@@ -63,9 +63,10 @@ let sendStream: SendStream | null = null;
 let role: "host" | "joiner" = "host";
 let peerTicket: string | null = null;
 
-// Track multiple joiners (host mode)
+// Track multiple joiners (host mode). sendStream is null until the
+// joiner's bi-stream has been accepted — never write before that.
 interface JoinerInfo {
-  sendStream: SendStream;
+  sendStream: SendStream | null;
   writeQueue: Promise<void>;
   chipEl: HTMLElement;
 }
@@ -109,7 +110,7 @@ function setJoinerDisconnected(remoteId: string) {
 
 function updateHostInputState() {
   if (role !== "host") return;
-  const hasConnected = joiners.size > 0;
+  const hasConnected = [...joiners.values()].some((j) => j.sendStream !== null);
   inputEl.disabled = !hasConnected;
   sendBtn.disabled = !hasConnected;
   if (hasConnected) {
@@ -148,10 +149,12 @@ async function doSend() {
     inputEl.value = "";
     const msg: DebugMessage = { kind: "data", payload: text, timestamp: Date.now() };
     for (const [id, joiner] of joiners) {
+      const stream = joiner.sendStream;
+      if (!stream) continue; // bi-stream not accepted yet
       try {
         let bytes = 0;
         await enqueueJoinerWrite(id, async () => {
-          bytes = await writeFramed(joiner.sendStream, msg);
+          bytes = await writeFramed(stream, msg);
         });
         log({
           timestamp: Date.now(),
@@ -214,7 +217,7 @@ async function handleConnection(conn: Connection) {
 
   if (role === "host") {
     const chip = addJoinerChip(remoteId);
-    joiners.set(remoteId, { sendStream: null!, writeQueue: Promise.resolve(), chipEl: chip });
+    joiners.set(remoteId, { sendStream: null, writeQueue: Promise.resolve(), chipEl: chip });
     updateHostInputState();
   } else {
     setStatus("connected", `Connected to ${shortId(remoteId)}`);
@@ -250,6 +253,7 @@ async function handleConnection(conn: Connection) {
         joiner.sendStream = stream.send;
         joiner.writeQueue = Promise.resolve();
       }
+      updateHostInputState(); // input is enabled only now that we can write
     } else {
       sendStream = stream.send;
       writeQueue = Promise.resolve();
@@ -259,7 +263,7 @@ async function handleConnection(conn: Connection) {
     if (role === "joiner") {
       for (let i = 1; i <= 3; i++) {
         const ping: DebugMessage = { kind: "ping", seq: i, timestamp: Date.now() };
-        const bytes = await writeFramed(sendStream, ping);
+        const bytes = await writeFramed(stream.send, ping);
         log({
           timestamp: Date.now(),
           category: "stream",
@@ -285,9 +289,10 @@ async function handleConnection(conn: Connection) {
         const pong: DebugMessage = { kind: "pong", seq: msg.seq, timestamp: Date.now() };
         if (role === "host") {
           const joiner = joiners.get(remoteId);
-          if (joiner) {
+          const joinerStream = joiner?.sendStream;
+          if (joiner && joinerStream) {
             enqueueJoinerWrite(remoteId, async () => {
-              const bytes = await writeFramed(joiner.sendStream, pong);
+              const bytes = await writeFramed(joinerStream, pong);
               log({
                 timestamp: Date.now(),
                 category: "stream",

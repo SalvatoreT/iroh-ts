@@ -1,6 +1,8 @@
 import {
   Endpoint,
   EndpointAddr,
+  writeFramed,
+  readFramed,
   type Connection,
   type SendStream,
   type RecvStream,
@@ -52,35 +54,22 @@ function disableInput() {
   sendBtn.disabled = true;
 }
 
-// --- Length-prefixed message protocol ---
+// --- Length-prefixed message protocol (via library framing helpers) ---
 
 async function writeMsg(send: SendStream, text: string) {
-  const bytes = encoder.encode(text);
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
+  await writeFramed(send, encoder.encode(text));
 }
 
 async function readLoop(recv: RecvStream) {
-  const buf: number[] = [];
-  while (true) {
-    try {
-      const chunk = await recv.readChunk(4096);
-      if (chunk === undefined || chunk === null) break;
-      for (let i = 0; i < chunk.length; i++) buf.push(chunk[i]);
-      while (buf.length >= 4) {
-        const len = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-        if (buf.length < 4 + len) break;
-        const msgBytes = new Uint8Array(buf.splice(0, 4 + len).slice(4));
-        const text = decoder.decode(msgBytes);
-        if (text !== "joined") {
-          addMessage(text, "peer");
-        }
+  try {
+    for await (const frame of readFramed(recv)) {
+      const text = decoder.decode(frame);
+      if (text !== "joined") {
+        addMessage(text, "peer");
       }
-    } catch {
-      break;
     }
+  } catch {
+    // Stream error — treated as a disconnect below
   }
   addMessage("Peer disconnected.", "system");
   disableInput();
@@ -158,12 +147,18 @@ async function main() {
     setStatus(`Share this link to chat: <a href="${joinUrl}">${joinUrl}</a>`);
     addMessage("Waiting for a peer to connect...", "system");
 
-    try {
-      const conn = await endpoint.accept();
-      if (conn) await setupStreams(conn, true);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setStatus(`Error: ${msg}`);
+    // Keep accepting so the host survives failed joins and disconnects —
+    // a new peer simply replaces the previous one.
+    while (true) {
+      try {
+        const conn = await endpoint.accept();
+        if (!conn) break;
+        await setupStreams(conn, true);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setStatus(`Error: ${msg}`);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
     }
   }
 }

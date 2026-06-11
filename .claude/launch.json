@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "chat",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "iroh-chat-example", "dev", "--port", "5183", "--strictPort"],
+      "port": 5183
+    },
+    {
+      "name": "poker",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "iroh-poker-example", "dev", "--port", "5184", "--strictPort"],
+      "port": 5184
+    },
+    {
+      "name": "echo-client",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "iroh-echo-client", "dev", "--port", "5185", "--strictPort"],
+      "port": 5185
+    }
+  ]
+}

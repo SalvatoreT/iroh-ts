@@ -1,6 +1,8 @@
 import {
   Endpoint,
   EndpointAddr,
+  writeFramed,
+  readFramed,
   type SendStream,
   type RecvStream,
 } from "@salvatoret/iroh";
@@ -33,34 +35,28 @@ function addMessage(text: string, from: "self" | "server" | "system") {
 }
 
 async function writeMsg(send: SendStream, text: string) {
-  const bytes = encoder.encode(text);
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
+  await writeFramed(send, encoder.encode(text));
 }
 
 async function readLoop(recv: RecvStream) {
-  const buf: number[] = [];
-  while (true) {
-    try {
-      const chunk = await recv.readChunk(4096);
-      if (chunk === undefined || chunk === null) break;
-      for (let i = 0; i < chunk.length; i++) buf.push(chunk[i]);
-      while (buf.length >= 4) {
-        const len = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-        if (buf.length < 4 + len) break;
-        const msgBytes = new Uint8Array(buf.splice(0, 4 + len).slice(4));
-        addMessage(decoder.decode(msgBytes), "server");
-      }
-    } catch {
-      break;
+  try {
+    for await (const frame of readFramed(recv)) {
+      addMessage(decoder.decode(frame), "server");
     }
+  } catch {
+    // Stream error — treated as a disconnect below
   }
-  setStatus("Disconnected from server", "disconnected");
+  onDisconnected("Disconnected from server");
+}
+
+/** Reset the UI so the user can reconnect without reloading. */
+function onDisconnected(reason: string) {
+  sendStream = null;
+  setStatus(reason, "disconnected");
   addMessage("Connection closed.", "system");
   msgInput.disabled = true;
   sendBtn.disabled = true;
+  connectBtn.disabled = false;
 }
 
 async function connect(serverId: string) {
@@ -86,13 +82,6 @@ async function connect(serverId: string) {
     msgInput.focus();
 
     readLoop(stream.recv);
-
-    conn.closed().then((reason) => {
-      setStatus(`Disconnected: ${reason}`, "disconnected");
-      sendStream = null;
-      msgInput.disabled = true;
-      sendBtn.disabled = true;
-    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     setStatus(`Connection failed: ${msg}`, "disconnected");

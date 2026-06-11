@@ -1,6 +1,8 @@
 import {
   Endpoint,
   EndpointAddr,
+  writeFramed,
+  readFramed,
   type Connection,
   type SendStream,
   type RecvStream,
@@ -66,39 +68,25 @@ function escapeHtml(s: string): string {
   return el.innerHTML;
 }
 
-// --- Message protocol (length-prefixed) ---
+// --- Message protocol (length-prefixed, via library framing helpers) ---
 
 async function writeMsg(send: SendStream, text: string) {
-  const bytes = encoder.encode(text);
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
+  await writeFramed(send, encoder.encode(text));
 }
 
 async function readLoop(recv: RecvStream, gen: number) {
-  const buf: number[] = [];
-  while (true) {
-    try {
-      const chunk = await recv.readChunk(4096);
-      if (chunk === undefined || chunk === null) break;
-      for (let i = 0; i < chunk.length; i++) buf.push(chunk[i]);
-      while (buf.length >= 4) {
-        const len = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-        if (buf.length < 4 + len) break;
-        const msgBytes = new Uint8Array(buf.splice(0, 4 + len).slice(4));
-        const text = decoder.decode(msgBytes);
-        if (!CONTROL_MESSAGES.includes(text)) {
-          addMessage(text, "peer");
-        }
+  try {
+    for await (const frame of readFramed(recv)) {
+      const text = decoder.decode(frame);
+      if (!CONTROL_MESSAGES.includes(text)) {
+        addMessage(text, "peer");
       }
-    } catch {
-      break;
     }
+  } catch {
+    // Stream error — handled as a disconnect below
   }
   // Only handle disconnect if this is still the active connection
   if (gen === connGeneration) {
-    addSystemMessage("Peer disconnected.");
     handleDisconnect();
   }
 }
@@ -176,7 +164,12 @@ async function acceptLoop() {
     try {
       const conn = await endpoint!.accept();
       if (!conn) break;
-      await setupStreams(conn);
+      // Set up streams without blocking the loop — a peer that connects but
+      // never opens a stream must not wedge the host for future joiners.
+      setupStreams(conn).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        addSystemMessage(`Stream setup error: ${msg}`);
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       addSystemMessage(`Accept error: ${msg}`);

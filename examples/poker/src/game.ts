@@ -31,6 +31,14 @@ export interface Player {
   acted: boolean;
 }
 
+export interface HandResult {
+  /** Indices into players[] of the winner(s); more than one on a split pot. */
+  winners: number[];
+  winnerNames: string[];
+  handName: string;
+  pot: number;
+}
+
 export class PokerGame {
   players: Player[] = [];
   deck: Card[] = [];
@@ -40,6 +48,8 @@ export class PokerGame {
   phase: Phase = "waiting";
   dealerIndex = 0;
   roundBet = 0;
+  private settled = false;
+  private lastResult: HandResult | null = null;
 
   addPlayer(name: string): number {
     this.players.push({ name, chips: 1000, hand: [], bet: 0, folded: false, acted: false });
@@ -53,6 +63,8 @@ export class PokerGame {
     this.pot = 0;
     this.roundBet = 0;
     this.phase = "preflop";
+    this.settled = false;
+    this.lastResult = null;
     for (const p of this.players) {
       p.hand = [this.deck.pop()!, this.deck.pop()!];
       p.bet = 0;
@@ -75,6 +87,7 @@ export class PokerGame {
   }
 
   applyAction(playerIndex: number, action: PlayerAction): boolean {
+    if (this.phase === "waiting" || this.phase === "showdown") return false;
     if (playerIndex !== this.currentPlayer) return false;
     const player = this.players[playerIndex];
     if (player.folded) return false;
@@ -82,10 +95,11 @@ export class PokerGame {
     // Validate and process action
     switch (action.type) {
       case "check":
-        if (this.roundBet > 0) return false; // Can't check when there's a bet
+        if (this.roundBet > player.bet) return false; // Can't check facing a bet
         break;
       case "bet": {
         if (this.roundBet > 0) return false; // Must raise, not bet, when bet is pending
+        if (!isValidAmount(action.amount)) return false;
         const amount = Math.min(action.amount, player.chips);
         player.chips -= amount;
         player.bet += amount;
@@ -107,6 +121,7 @@ export class PokerGame {
       }
       case "raise": {
         if (this.roundBet <= 0) return false; // Must bet, not raise, when no bet pending
+        if (!isValidAmount(action.amount)) return false;
         const toCall = this.roundBet - player.bet;
         const raiseExtra = Math.min(action.amount, player.chips - toCall);
         const total = Math.min(toCall + Math.max(raiseExtra, 0), player.chips);
@@ -123,6 +138,8 @@ export class PokerGame {
       case "fold":
         player.folded = true;
         break;
+      default:
+        return false;
     }
     player.acted = true;
 
@@ -172,25 +189,60 @@ export class PokerGame {
     this.skipFolded();
   }
 
-  getWinner(): { name: string; handName: string } {
-    const active = this.players.filter((p) => !p.folded);
-    if (active.length === 1) {
-      return { name: active[0].name, handName: "last player standing" };
+  /** Determine the winner(s) of the current hand. Pure — does not move chips. */
+  getWinner(): HandResult {
+    const activeIndices = this.players
+      .map((_, i) => i)
+      .filter((i) => !this.players[i].folded);
+
+    if (activeIndices.length === 1) {
+      const i = activeIndices[0];
+      return {
+        winners: [i],
+        winnerNames: [this.players[i].name],
+        handName: "last player standing",
+        pot: this.pot,
+      };
     }
 
-    let best = active[0];
-    let bestScore = handScore(best.hand, this.community);
-    let bestName = handName(bestScore);
-    for (let i = 1; i < active.length; i++) {
-      const score = handScore(active[i].hand, this.community);
-      if (score > bestScore) {
-        best = active[i];
-        bestScore = score;
-        bestName = handName(score);
+    let winners = [activeIndices[0]];
+    let bestRank = evaluateHand([...this.players[activeIndices[0]].hand, ...this.community]);
+    for (const i of activeIndices.slice(1)) {
+      const rank = evaluateHand([...this.players[i].hand, ...this.community]);
+      const cmp = compareHands(rank, bestRank);
+      if (cmp > 0) {
+        winners = [i];
+        bestRank = rank;
+      } else if (cmp === 0) {
+        winners.push(i);
       }
     }
-    best.chips += this.pot;
-    return { name: best.name, handName: bestName };
+    return {
+      winners,
+      winnerNames: winners.map((i) => this.players[i].name),
+      handName: bestRank.name,
+      pot: this.pot,
+    };
+  }
+
+  /**
+   * Award the pot to the winner(s), splitting on ties (odd chip goes to the
+   * first winner). Idempotent: calling it again returns the same result
+   * without moving chips twice.
+   */
+  settle(): HandResult {
+    if (this.settled && this.lastResult) return this.lastResult;
+    const result = this.getWinner();
+    const share = Math.floor(this.pot / result.winners.length);
+    let remainder = this.pot - share * result.winners.length;
+    for (const i of result.winners) {
+      this.players[i].chips += share + remainder;
+      remainder = 0;
+    }
+    this.pot = 0;
+    this.settled = true;
+    this.lastResult = result;
+    return result;
   }
 
   getPlayerStates(): PlayerState[] {
@@ -204,36 +256,128 @@ export class PokerGame {
   }
 }
 
-// Simplified hand scoring: higher = better
-function handScore(hand: Card[], community: Card[]): number {
-  const all = [...hand, ...community];
-  const ranks = all.map((c) => RANK_VALUES[c.rank]).sort((a, b) => b - a);
-
-  // Count rank frequencies
-  const freq = new Map<number, number>();
-  for (const r of ranks) freq.set(r, (freq.get(r) || 0) + 1);
-  const counts = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
-
-  // Four of a kind
-  if (counts[0][1] >= 4) return 7000 + counts[0][0];
-  // Full house
-  if (counts[0][1] >= 3 && counts[1] && counts[1][1] >= 2) return 6000 + counts[0][0];
-  // Three of a kind
-  if (counts[0][1] >= 3) return 3000 + counts[0][0];
-  // Two pair
-  if (counts[0][1] >= 2 && counts[1] && counts[1][1] >= 2)
-    return 2000 + counts[0][0] * 15 + counts[1][0];
-  // Pair
-  if (counts[0][1] >= 2) return 1000 + counts[0][0];
-  // High card
-  return ranks[0];
+function isValidAmount(amount: number): boolean {
+  return Number.isSafeInteger(amount) && amount > 0;
 }
 
-function handName(score: number): string {
-  if (score >= 7000) return "Four of a Kind";
-  if (score >= 6000) return "Full House";
-  if (score >= 3000) return "Three of a Kind";
-  if (score >= 2000) return "Two Pair";
-  if (score >= 1000) return "Pair";
-  return "High Card";
+// --- Hand evaluation (best 5 of up to 7 cards) ---
+
+/** Comparable hand rank: higher category wins; ties broken by tiebreak array. */
+export interface HandRank {
+  /** 8 = straight flush ... 0 = high card */
+  category: number;
+  /** Rank values, most significant first (e.g. pair rank, then kickers). */
+  tiebreak: number[];
+  name: string;
+}
+
+const CATEGORY_NAMES = [
+  "High Card",
+  "Pair",
+  "Two Pair",
+  "Three of a Kind",
+  "Straight",
+  "Flush",
+  "Full House",
+  "Four of a Kind",
+  "Straight Flush",
+];
+
+/** Highest straight in the given rank values (14 = ace), or 0 if none. Handles the wheel (A-2-3-4-5). */
+function bestStraightHigh(rankValues: number[]): number {
+  const unique = [...new Set(rankValues)].sort((a, b) => b - a);
+  if (unique.includes(14)) unique.push(1); // ace plays low in the wheel
+  let run = 1;
+  for (let i = 1; i < unique.length; i++) {
+    if (unique[i] === unique[i - 1] - 1) {
+      run++;
+      if (run >= 5) return unique[i] + 4;
+    } else {
+      run = 1;
+    }
+  }
+  return 0;
+}
+
+export function evaluateHand(cards: Card[]): HandRank {
+  const values = cards.map((c) => RANK_VALUES[c.rank]);
+  const sorted = [...values].sort((a, b) => b - a);
+
+  // Rank frequencies, sorted by count desc then rank desc
+  const freq = new Map<number, number>();
+  for (const v of values) freq.set(v, (freq.get(v) || 0) + 1);
+  const groups = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
+
+  // Flush: any suit with >= 5 cards
+  const bySuit = new Map<Suit, number[]>();
+  for (const c of cards) {
+    const list = bySuit.get(c.suit) ?? [];
+    list.push(RANK_VALUES[c.rank]);
+    bySuit.set(c.suit, list);
+  }
+  let flushValues: number[] | null = null;
+  for (const list of bySuit.values()) {
+    if (list.length >= 5) flushValues = list.sort((a, b) => b - a);
+  }
+
+  // Straight flush
+  if (flushValues) {
+    const high = bestStraightHigh(flushValues);
+    if (high > 0) return rank(8, [high]);
+  }
+
+  // Four of a kind: quad rank + best kicker
+  if (groups[0][1] >= 4) {
+    const kicker = sorted.find((v) => v !== groups[0][0])!;
+    return rank(7, [groups[0][0], kicker]);
+  }
+
+  // Full house: trips + best remaining pair (or second trips)
+  if (groups[0][1] >= 3 && groups[1] && groups[1][1] >= 2) {
+    return rank(6, [groups[0][0], groups[1][0]]);
+  }
+
+  // Flush: top 5 of the flush suit
+  if (flushValues) return rank(5, flushValues.slice(0, 5));
+
+  // Straight
+  const straightHigh = bestStraightHigh(values);
+  if (straightHigh > 0) return rank(4, [straightHigh]);
+
+  // Three of a kind: trips + 2 kickers
+  if (groups[0][1] >= 3) {
+    const kickers = sorted.filter((v) => v !== groups[0][0]).slice(0, 2);
+    return rank(3, [groups[0][0], ...kickers]);
+  }
+
+  // Two pair: top two pairs + kicker
+  if (groups[0][1] >= 2 && groups[1] && groups[1][1] >= 2) {
+    const [hi, lo] = [groups[0][0], groups[1][0]];
+    const kicker = sorted.find((v) => v !== hi && v !== lo)!;
+    return rank(2, [hi, lo, kicker]);
+  }
+
+  // Pair: pair + 3 kickers
+  if (groups[0][1] >= 2) {
+    const kickers = sorted.filter((v) => v !== groups[0][0]).slice(0, 3);
+    return rank(1, [groups[0][0], ...kickers]);
+  }
+
+  // High card: top 5
+  return rank(0, sorted.slice(0, 5));
+}
+
+function rank(category: number, tiebreak: number[]): HandRank {
+  return { category, tiebreak, name: CATEGORY_NAMES[category] };
+}
+
+/** Compare two hand ranks: positive if a wins, negative if b wins, 0 on tie. */
+export function compareHands(a: HandRank, b: HandRank): number {
+  if (a.category !== b.category) return a.category - b.category;
+  const n = Math.max(a.tiebreak.length, b.tiebreak.length);
+  for (let i = 0; i < n; i++) {
+    const d = (a.tiebreak[i] ?? 0) - (b.tiebreak[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
 }

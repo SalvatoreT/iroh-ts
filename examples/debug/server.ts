@@ -4,8 +4,11 @@ import {
   EndpointAddr,
   BlobStore,
   DocEngine,
+  writeFramed as writeFrame,
+  readFramed as readFrames,
   type Connection,
   type SendStream,
+  type FramedRecvStream,
 } from "@salvatoret/iroh";
 
 const ALPN = new TextEncoder().encode("iroh-debug/1");
@@ -54,45 +57,30 @@ interface DebugMessage {
 }
 
 async function writeFramed(send: SendStream, msg: DebugMessage): Promise<number> {
-  const bytes = encoder.encode(JSON.stringify(msg));
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
-  return 4 + bytes.length;
+  return writeFrame(send, encoder.encode(JSON.stringify(msg)));
 }
 
 async function readFramed(
-  recv: { readChunk(max: number): Promise<Uint8Array | null | undefined> },
+  recv: FramedRecvStream,
   handler: (msg: DebugMessage, rawSize: number) => void,
 ): Promise<void> {
-  const buf: number[] = [];
-  while (true) {
-    const chunk = await recv.readChunk(4096);
-    if (chunk === undefined || chunk === null) break;
-    for (let i = 0; i < chunk.length; i++) buf.push(chunk[i]);
-    while (buf.length >= 4) {
-      const msgLen = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-      if (buf.length < 4 + msgLen) break;
-      const raw = buf.splice(0, 4 + msgLen);
-      const msgBytes = new Uint8Array(raw.slice(4));
-      handler(JSON.parse(decoder.decode(msgBytes)), 4 + msgLen);
-    }
+  for await (const frame of readFrames(recv)) {
+    handler(JSON.parse(decoder.decode(frame)), 4 + frame.length);
   }
 }
 
 // --- Connection handler ---
 
-// Serialize all writes to a send stream to prevent frame interleaving.
-let writeQueue: Promise<void> = Promise.resolve();
-
-function enqueueWrite(fn: () => Promise<void>): Promise<void> {
-  const next = writeQueue.then(fn, () => fn());
-  writeQueue = next.then(() => {}, () => {});
-  return next;
-}
-
 async function handleConnection(conn: Connection) {
+  // Serialize writes to this connection's send stream to prevent frame
+  // interleaving — one queue per connection, not a shared global.
+  let writeQueue: Promise<void> = Promise.resolve();
+  function enqueueWrite(fn: () => Promise<void>): Promise<void> {
+    const next = writeQueue.then(fn, () => fn());
+    writeQueue = next.then(() => {}, () => {});
+    return next;
+  }
+
   const remoteId = conn.remoteEndpointId();
   const alpn = conn.alpn();
   const stableId = conn.stableId();
@@ -121,7 +109,6 @@ async function handleConnection(conn: Connection) {
       const stream = await conn.acceptBi();
       log("stream", "<-", "acceptBi() resolved");
       sendStream = stream.send;
-      writeQueue = Promise.resolve();
 
       readFramed(stream.recv, (msg, rawSize) => {
         const from = msg.kind === "data" ? ` from ${shortId(remoteId)}` : "";

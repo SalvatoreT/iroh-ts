@@ -1,4 +1,4 @@
-// Message types sent over iroh streams between host and players.
+// Message types sent over the framed iroh bi-stream between host and players.
 
 export type Suit = "hearts" | "diamonds" | "clubs" | "spades";
 export type Rank =
@@ -39,14 +39,3 @@ export interface PlayerState {
 }
 
 export type Phase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown";
-
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-export function encode(msg: HostMessage | PlayerMessage): Uint8Array {
-  return encoder.encode(JSON.stringify(msg));
-}
-
-export function decode(data: Uint8Array): HostMessage | PlayerMessage {
-  return JSON.parse(decoder.decode(data));
-}

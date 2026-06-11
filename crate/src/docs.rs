@@ -20,8 +20,10 @@ impl DocEngine {
     /// Create a new document engine with in-memory storage.
     /// This creates its own Endpoint, gossip, blob store, and docs engine.
     pub async fn create() -> Result<DocEngine, JsError> {
+        let idle_timeout = Duration::from_secs(30).try_into().map_err(to_err)?;
         let transport_config = iroh::endpoint::QuicTransportConfig::builder()
             .keep_alive_interval(Duration::from_secs(5))
+            .max_idle_timeout(Some(idle_timeout))
             .build();
         let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
             .transport_config(transport_config)

@@ -16,10 +16,14 @@ pub struct Endpoint {
 #[wasm_bindgen]
 impl Endpoint {
     /// Create a new Iroh endpoint with default n0 relay settings.
-    /// Keepalive is enabled (5s interval) to prevent relay idle timeouts.
+    /// Keepalive is enabled (5s interval) to prevent relay idle timeouts, and
+    /// a 30s max idle timeout ensures dead peers are detected (iroh 1.0
+    /// disables the connection-level idle timeout by default).
     pub async fn create() -> Result<Endpoint, JsError> {
+        let idle_timeout = Duration::from_secs(30).try_into().map_err(to_err)?;
         let transport_config = iroh::endpoint::QuicTransportConfig::builder()
             .keep_alive_interval(Duration::from_secs(5))
+            .max_idle_timeout(Some(idle_timeout))
             .build();
         let ep = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
             .transport_config(transport_config)

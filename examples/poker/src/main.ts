@@ -1,11 +1,16 @@
-import { Endpoint, EndpointAddr, type Connection } from "@salvatoret/iroh";
+import {
+  Endpoint,
+  EndpointAddr,
+  writeJson,
+  readJson,
+  type Connection,
+  type SendStream,
+} from "@salvatoret/iroh";
 import "poker-card-element";
 import { PokerGame } from "./game.js";
 import type { Card, HostMessage, PlayerMessage } from "./protocol.js";
 
-const ALPN = new TextEncoder().encode("iroh-poker/1");
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+const ALPN = new TextEncoder().encode("iroh-poker/2");
 
 const statusTextEl = document.getElementById("status-text")!;
 const communityEl = document.getElementById("community")!;
@@ -25,13 +30,13 @@ const waitingBar = document.getElementById("waiting-bar")!;
 // --- Module-scope connection state ---
 type ConnState = "connecting" | "connected" | "disconnected" | "reconnecting";
 let state: ConnState = "connecting";
-let currentConn: Connection | null = null;
+let sendStream: SendStream | null = null;
+let sendQueue: Promise<unknown> = Promise.resolve();
 let connGeneration = 0;
 let endpoint: Endpoint | null = null;
 let role: "host" | "joiner" = "host";
 let peerTicket: string | null = null;
 let currentRoundBet = 0;
-let myCurrentBet = 0;
 
 function updateState(newState: ConnState, detail?: string) {
   state = newState;
@@ -44,7 +49,7 @@ function updateState(newState: ConnState, detail?: string) {
 function renderCards(container: HTMLElement, cards: Card[]) {
   container.innerHTML = "";
   for (const card of cards) {
-    const el = document.createElement("playing-card") as any;
+    const el = document.createElement("playing-card");
     el.setAttribute("rank", card.rank);
     el.setAttribute("suit", card.suit);
     container.appendChild(el);
@@ -73,7 +78,6 @@ function renderState(msg: Extract<HostMessage, { kind: "state" }>, myIndex: numb
 
   // Track round bet for button handlers
   currentRoundBet = msg.roundBet;
-  myCurrentBet = msg.players[myIndex]?.bet ?? 0;
 
   // Dynamic button labels based on whether there's an outstanding bet
   if (msg.roundBet > 0) {
@@ -88,24 +92,32 @@ function renderState(msg: Extract<HostMessage, { kind: "state" }>, myIndex: numb
 
 // --- Messaging ---
 
+/**
+ * Send a message as a JSON frame on the bi-stream. Writes are chained on a
+ * queue so multi-message sequences (deal, then state) keep their order.
+ */
 function sendMsg(msg: HostMessage | PlayerMessage) {
-  if (!currentConn) return;
-  try {
-    currentConn.sendDatagram(encoder.encode(JSON.stringify(msg)));
-  } catch {
-    // Datagram send failed — connection likely dead, will be detected by readLoop
-  }
+  const stream = sendStream;
+  if (!stream) return;
+  sendQueue = sendQueue
+    .then(() => writeJson(stream, msg))
+    .catch(() => {
+      // Write failed — connection likely dead; the read loop handles it.
+    });
 }
 
-function parseMsg(data: Uint8Array): HostMessage | PlayerMessage {
-  return JSON.parse(decoder.decode(data));
+/** Read the bet/raise amount from the input; null if not a positive integer. */
+function readBetAmount(): number | null {
+  const amount = parseInt(betAmountEl.value, 10);
+  if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+  return amount;
 }
 
 // --- Connection management ---
 
 function handleDisconnect() {
   if (state === "disconnected" || state === "reconnecting") return;
-  currentConn = null;
+  sendStream = null;
   updateState("disconnected", "Opponent disconnected. Waiting...");
   if (role === "joiner") {
     setTimeout(() => connectWithRetry(), 2000);
@@ -113,23 +125,51 @@ function handleDisconnect() {
   // Host: acceptLoop is always running, no action needed
 }
 
-/** Read datagrams in a loop, dispatching to handler. Triggers disconnect on exit. */
-async function datagramLoop(
+/**
+ * Open/accept the bi-stream on a fresh connection, register it as the active
+ * send stream, and pump incoming messages to the handler. Used for initial
+ * connections AND reconnects, so message handling can never be dropped.
+ */
+async function attachConnection(
   conn: Connection,
-  gen: number,
-  onMessage: (data: Uint8Array) => void,
-) {
-  while (true) {
+  onMessage: (msg: HostMessage | PlayerMessage) => void,
+): Promise<number> {
+  connGeneration++;
+  const gen = connGeneration;
+
+  let stream;
+  if (role === "host") {
+    // acceptBi resolves once the joiner opens the stream and writes "ready"
+    stream = await conn.acceptBi();
+  } else {
+    stream = await conn.openBi();
+  }
+
+  sendStream = stream.send;
+  sendQueue = Promise.resolve();
+  if (role === "joiner") {
+    sendMsg({ kind: "ready" });
+  }
+  updateState("connected", "Opponent connected!");
+
+  conn.closed().then(() => {
+    if (gen === connGeneration) handleDisconnect();
+  });
+
+  // Pump messages in the background until the stream ends
+  (async () => {
     try {
-      const data = await conn.readDatagram();
-      onMessage(data);
+      for await (const msg of readJson<HostMessage | PlayerMessage>(stream.recv)) {
+        if (gen !== connGeneration) return; // superseded by a newer connection
+        onMessage(msg);
+      }
     } catch {
-      break;
+      // Stream error — treat like a disconnect below
     }
-  }
-  if (gen === connGeneration) {
-    handleDisconnect();
-  }
+    if (gen === connGeneration) handleDisconnect();
+  })();
+
+  return gen;
 }
 
 // --- Host ---
@@ -178,17 +218,20 @@ async function hostGame() {
   };
 
   const showResult = () => {
-    const result = game.getWinner();
-    sendMsg({ kind: "result", winner: result.name, winningHand: result.handName, pot: game.pot });
-    resultEl.textContent = `${result.name} wins with ${result.handName}! ($${game.pot})`;
+    const result = game.settle();
+    const winner = result.winnerNames.join(" & ");
+    sendMsg({ kind: "result", winner, winningHand: result.handName, pot: result.pot });
+    resultEl.textContent = `${winner} wins with ${result.handName}! ($${result.pot})`;
     actionsEl.style.display = "none";
     waitingBar.style.display = "none";
     newHandBar.style.display = "flex";
+    // Broadcast once more so both sides see the post-showdown chip counts
+    broadcastState();
   };
 
-  const doHostAction = (action: PlayerMessage) => {
-    if (action.kind !== "action") return;
-    game.applyAction(0, action.action);
+  const applyAndBroadcast = (playerIndex: number, msg: PlayerMessage) => {
+    if (msg.kind !== "action") return;
+    if (!game.applyAction(playerIndex, msg.action)) return;
     if (game.phase === "showdown") {
       showResult();
     } else {
@@ -197,23 +240,19 @@ async function hostGame() {
   };
 
   btnBet.onclick = () => {
-    const amount = parseInt(betAmountEl.value);
-    if (currentRoundBet > 0) {
-      doHostAction({ kind: "action", action: { type: "raise", amount } });
-    } else {
-      doHostAction({ kind: "action", action: { type: "bet", amount } });
-    }
+    const amount = readBetAmount();
+    if (amount === null) return;
+    const type = currentRoundBet > 0 ? "raise" : "bet";
+    applyAndBroadcast(0, { kind: "action", action: { type, amount } });
   };
   btnCheck.onclick = () => {
-    if (currentRoundBet > 0) {
-      doHostAction({ kind: "action", action: { type: "call" } });
-    } else {
-      doHostAction({ kind: "action", action: { type: "check" } });
-    }
+    const type = currentRoundBet > 0 ? "call" : "check";
+    applyAndBroadcast(0, { kind: "action", action: { type } });
   };
-  btnFold.onclick = () => doHostAction({ kind: "action", action: { type: "fold" } });
+  btnFold.onclick = () => applyAndBroadcast(0, { kind: "action", action: { type: "fold" } });
 
   btnNewHand.onclick = () => {
+    if (state !== "connected") return;
     sendMsg({ kind: "new-hand" });
     startHand();
   };
@@ -230,43 +269,28 @@ async function hostGame() {
     }
   };
 
-  // Accept loop — always has accept() pending for instant reconnection
+  // Accept loop — always has accept() pending for instant reconnection.
+  // Stream setup runs per-connection without blocking the loop, so a peer
+  // that connects but never opens a stream can't wedge the host.
   while (true) {
     try {
       const conn = await endpoint!.accept();
       if (!conn) break;
 
-      connGeneration++;
-      const gen = connGeneration;
-      currentConn = conn;
-      updateState("connected", "Opponent connected!");
-
-      if (!playerAdded) {
-        game.addPlayer("Player 2");
-        playerAdded = true;
-        startHand();
-      } else {
-        // Reconnection — resync game state
-        resyncJoiner();
-      }
-
-      // Monitor connection closure
-      conn.closed().then(() => {
-        if (gen === connGeneration) handleDisconnect();
-      });
-
-      // Read player actions
-      datagramLoop(conn, gen, (data) => {
-        const msg = parseMsg(data) as PlayerMessage;
-        if (msg.kind === "action") {
-          game.applyAction(1, msg.action);
-          if (game.phase === "showdown") {
-            showResult();
+      attachConnection(conn, (msg) => applyAndBroadcast(1, msg as PlayerMessage))
+        .then(() => {
+          if (!playerAdded) {
+            game.addPlayer("Player 2");
+            playerAdded = true;
+            startHand();
           } else {
-            broadcastState();
+            resyncJoiner();
           }
-        }
-      });
+        })
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          statusTextEl.textContent = `Stream setup error: ${msg}`;
+        });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       statusTextEl.textContent = `Accept error: ${msg}`;
@@ -277,28 +301,9 @@ async function hostGame() {
 
 // --- Joiner ---
 
-async function joinGame() {
-  const myIndex = 1;
-
-  btnBet.onclick = () => {
-    const amount = parseInt(betAmountEl.value);
-    if (currentRoundBet > 0) {
-      sendMsg({ kind: "action", action: { type: "raise", amount } });
-    } else {
-      sendMsg({ kind: "action", action: { type: "bet", amount } });
-    }
-  };
-  btnCheck.onclick = () => {
-    if (currentRoundBet > 0) {
-      sendMsg({ kind: "action", action: { type: "call" } });
-    } else {
-      sendMsg({ kind: "action", action: { type: "check" } });
-    }
-  };
-  btnFold.onclick = () => sendMsg({ kind: "action", action: { type: "fold" } });
-
-  const handleHostMessage = (data: Uint8Array) => {
-    const msg = parseMsg(data) as HostMessage;
+function makeHostMessageHandler(myIndex: number) {
+  return (raw: HostMessage | PlayerMessage) => {
+    const msg = raw as HostMessage;
     switch (msg.kind) {
       case "deal":
         renderCards(handEl, msg.hand);
@@ -321,11 +326,27 @@ async function joinGame() {
         break;
     }
   };
-
-  await connectWithRetry(handleHostMessage);
 }
 
-async function connectWithRetry(onMessage?: (data: Uint8Array) => void) {
+function joinGame() {
+  btnBet.onclick = () => {
+    const amount = readBetAmount();
+    if (amount === null) return;
+    const type = currentRoundBet > 0 ? "raise" : "bet";
+    sendMsg({ kind: "action", action: { type, amount } });
+  };
+  btnCheck.onclick = () => {
+    const type = currentRoundBet > 0 ? "call" : "check";
+    sendMsg({ kind: "action", action: { type } });
+  };
+  btnFold.onclick = () => sendMsg({ kind: "action", action: { type: "fold" } });
+
+  return connectWithRetry();
+}
+
+const handleHostMessage = makeHostMessageHandler(1);
+
+async function connectWithRetry() {
   const MAX_ATTEMPTS = 6;
   const RETRY_DELAY = 5000;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -339,19 +360,8 @@ async function connectWithRetry(onMessage?: (data: Uint8Array) => void) {
       const addr = EndpointAddr.fromEndpointId(peerTicket!);
       const conn = await endpoint!.connect(addr, ALPN);
       addr.free();
-
-      connGeneration++;
-      const gen = connGeneration;
-      currentConn = conn;
+      await attachConnection(conn, handleHostMessage);
       updateState("connected", "Connected! Waiting for deal...");
-
-      conn.closed().then(() => {
-        if (gen === connGeneration) handleDisconnect();
-      });
-
-      if (onMessage) {
-        datagramLoop(conn, gen, onMessage);
-      }
       return;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
