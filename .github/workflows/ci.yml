@@ -32,9 +32,11 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
+      # Pinned: pnpm "latest" enables a minimum-release-age supply-chain
+      # policy that rejects lockfile entries published within 24h.
       - uses: pnpm/action-setup@v5
         with:
-          version: latest
+          version: 10.22.0
 
       - uses: actions/setup-node@v6
         with:
