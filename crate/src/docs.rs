@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use wasm_bindgen::prelude::*;
 
+use crate::to_err;
+
 /// A document engine for replicated key-value documents.
 ///
 /// Wraps an iroh Endpoint with gossip, blobs, and docs to provide
@@ -9,7 +11,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct DocEngine {
     docs: iroh_docs::protocol::Docs,
-    _router: iroh::protocol::Router,
+    router: iroh::protocol::Router,
     blob_store: iroh_blobs::store::mem::MemStore,
 }
 
@@ -57,7 +59,7 @@ impl DocEngine {
 
         Ok(DocEngine {
             docs,
-            _router: router,
+            router,
             blob_store,
         })
     }
@@ -88,10 +90,7 @@ impl DocEngine {
 
     /// Shut down the document engine.
     pub async fn shutdown(&self) -> Result<(), JsError> {
-        self._router
-            .shutdown()
-            .await
-            .map_err(|e| JsError::new(&e.to_string()))
+        self.router.shutdown().await.map_err(to_err)
     }
 }
 
@@ -178,8 +177,4 @@ impl Doc {
     pub async fn close(&self) -> Result<(), JsError> {
         self.inner.close().await.map_err(to_err)
     }
-}
-
-fn to_err<E: std::fmt::Display>(e: E) -> JsError {
-    JsError::new(&e.to_string())
 }

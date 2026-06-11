@@ -59,7 +59,7 @@ All WASM objects have `free()` and support `Symbol.dispose`. Call `free()` when 
 - `crate/` — Rust workspace member, compiled to WASM
 - `ts/` — TypeScript entry points (re-exports only)
 - `__test__/` — Vitest integration tests (30s timeout)
-- `examples/` — Deployable Cloudflare Workers apps (chat, poker); each has its own `wrangler.toml`
+- `examples/` — Example apps: Cloudflare Workers-deployable browser apps (chat, poker, debug — each has its own `wrangler.toml`), a browser-only p2p-chat, and a Node.js echo-server
 - `docs/` — GitHub Pages site
 - pnpm workspace: root + `examples/*`
 

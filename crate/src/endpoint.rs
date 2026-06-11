@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 use wasm_bindgen::prelude::*;
 
 use crate::addr::EndpointAddr;
+use crate::to_err;
 
 /// An Iroh endpoint for peer-to-peer networking.
 #[wasm_bindgen]
@@ -268,7 +269,7 @@ impl RecvStream {
             .read_chunk(max_length as usize)
             .await
             .map_err(to_err)?;
-        Ok(chunk.map(|c| c.bytes.to_vec()))
+        Ok(chunk.map(|c| c.to_vec()))
     }
 
     /// Read all remaining data from the stream up to a size limit (in bytes).
@@ -288,8 +289,4 @@ impl RecvStream {
             .map_err(|_| JsError::new("stream is in use"))?;
         r.stop(code).map_err(to_err)
     }
-}
-
-fn to_err<E: std::fmt::Display>(e: E) -> JsError {
-    JsError::new(&e.to_string())
 }

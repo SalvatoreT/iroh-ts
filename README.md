@@ -2,7 +2,7 @@
 
 TypeScript bindings for [iroh](https://iroh.computer), the peer-to-peer networking stack. Connect nodes, transfer data, and sync documents — in Node.js or the browser — powered by WASM.
 
-Built on iroh v0.97 (Rust → WASM via `wasm-pack`). One `npm install`, zero native dependencies.
+Built on iroh v1.0.0-rc.1 (Rust → WASM via `wasm-pack`). One `npm install`, zero native dependencies.
 
 ## Install
 
@@ -221,6 +221,9 @@ See the [`examples/`](./examples) directory:
 
 - **[Chat](./examples/chat)** — peer-to-peer chat room, joinable via URL
 - **[Poker](./examples/poker)** — multiplayer poker table with card rendering
+- **[P2P Chat](./examples/p2p-chat)** — minimal browser-to-browser chat
+- **[Echo Server](./examples/echo-server)** — Node.js echo server with a browser client
+- **[Debug](./examples/debug)** — connectivity debugging tool
 
 ## License
 
