@@ -2,7 +2,7 @@
 
 TypeScript bindings for [iroh](https://iroh.computer), the peer-to-peer networking stack. Connect nodes, transfer data, and sync documents — in Node.js or the browser — powered by WASM.
 
-Built on iroh v0.97 (Rust → WASM via `wasm-pack`). One `npm install`, zero native dependencies.
+Built on iroh v1.0.0-rc.1 (Rust → WASM via `wasm-pack`). One `npm install`, zero native dependencies.
 
 ## Install
 
@@ -184,6 +184,26 @@ A replicated key-value document.
 | `del` | `del(author: string, prefix: Uint8Array): Promise<number>` | Delete by prefix, returns count |
 | `close` | `close(): Promise<void>` | Close the document |
 
+### Framed messages
+
+QUIC streams are byte streams; these helpers add length-prefixed message framing (4-byte big-endian length + payload, max 16 MiB per frame by default):
+
+```ts
+import { writeFramed, readFramed, writeJson, readJson } from "@salvatoret/iroh";
+
+await writeJson(stream.send, { kind: "hello" });
+for await (const msg of readJson(stream.recv)) {
+  console.log(msg); // parsed JSON values until the stream finishes
+}
+```
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `writeFramed` | `writeFramed(send, payload: Uint8Array): Promise<number>` | Write one frame, returns bytes written |
+| `readFramed` | `readFramed(recv, opts?): AsyncGenerator<Uint8Array>` | Yield frames until the stream finishes |
+| `writeJson` | `writeJson(send, value: unknown): Promise<number>` | Write a JSON-encoded frame |
+| `readJson` | `readJson<T>(recv, opts?): AsyncGenerator<T>` | Yield parsed JSON frames |
+
 ## Memory Management
 
 All WASM objects have a `free()` method and support `Symbol.dispose` (TypeScript `using`). Call `free()` when done to release WASM memory:
@@ -221,6 +241,9 @@ See the [`examples/`](./examples) directory:
 
 - **[Chat](./examples/chat)** — peer-to-peer chat room, joinable via URL
 - **[Poker](./examples/poker)** — multiplayer poker table with card rendering
+- **[P2P Chat](./examples/p2p-chat)** — minimal browser-to-browser chat
+- **[Echo Server](./examples/echo-server)** — Node.js echo server with a browser client
+- **[Debug](./examples/debug)** — connectivity debugging tool
 
 ## License
 

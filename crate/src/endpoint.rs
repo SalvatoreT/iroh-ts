@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 use wasm_bindgen::prelude::*;
 
 use crate::addr::EndpointAddr;
+use crate::to_err;
 
 /// An Iroh endpoint for peer-to-peer networking.
 #[wasm_bindgen]
@@ -15,10 +16,14 @@ pub struct Endpoint {
 #[wasm_bindgen]
 impl Endpoint {
     /// Create a new Iroh endpoint with default n0 relay settings.
-    /// Keepalive is enabled (5s interval) to prevent relay idle timeouts.
+    /// Keepalive is enabled (5s interval) to prevent relay idle timeouts, and
+    /// a 30s max idle timeout ensures dead peers are detected (iroh 1.0
+    /// disables the connection-level idle timeout by default).
     pub async fn create() -> Result<Endpoint, JsError> {
+        let idle_timeout = Duration::from_secs(30).try_into().map_err(to_err)?;
         let transport_config = iroh::endpoint::QuicTransportConfig::builder()
             .keep_alive_interval(Duration::from_secs(5))
+            .max_idle_timeout(Some(idle_timeout))
             .build();
         let ep = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
             .transport_config(transport_config)
@@ -268,7 +273,7 @@ impl RecvStream {
             .read_chunk(max_length as usize)
             .await
             .map_err(to_err)?;
-        Ok(chunk.map(|c| c.bytes.to_vec()))
+        Ok(chunk.map(|c| c.to_vec()))
     }
 
     /// Read all remaining data from the stream up to a size limit (in bytes).
@@ -288,8 +293,4 @@ impl RecvStream {
             .map_err(|_| JsError::new("stream is in use"))?;
         r.stop(code).map_err(to_err)
     }
-}
-
-fn to_err<E: std::fmt::Display>(e: E) -> JsError {
-    JsError::new(&e.to_string())
 }

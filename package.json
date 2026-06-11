@@ -48,7 +48,8 @@
     "build": "pnpm build:wasm && pnpm build:ts",
     "demo": "pnpm --filter iroh-echo-server start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

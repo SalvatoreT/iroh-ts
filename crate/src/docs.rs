@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use wasm_bindgen::prelude::*;
 
+use crate::to_err;
+
 /// A document engine for replicated key-value documents.
 ///
 /// Wraps an iroh Endpoint with gossip, blobs, and docs to provide
@@ -9,7 +11,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct DocEngine {
     docs: iroh_docs::protocol::Docs,
-    _router: iroh::protocol::Router,
+    router: iroh::protocol::Router,
     blob_store: iroh_blobs::store::mem::MemStore,
 }
 
@@ -18,8 +20,10 @@ impl DocEngine {
     /// Create a new document engine with in-memory storage.
     /// This creates its own Endpoint, gossip, blob store, and docs engine.
     pub async fn create() -> Result<DocEngine, JsError> {
+        let idle_timeout = Duration::from_secs(30).try_into().map_err(to_err)?;
         let transport_config = iroh::endpoint::QuicTransportConfig::builder()
             .keep_alive_interval(Duration::from_secs(5))
+            .max_idle_timeout(Some(idle_timeout))
             .build();
         let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
             .transport_config(transport_config)
@@ -57,7 +61,7 @@ impl DocEngine {
 
         Ok(DocEngine {
             docs,
-            _router: router,
+            router,
             blob_store,
         })
     }
@@ -88,10 +92,7 @@ impl DocEngine {
 
     /// Shut down the document engine.
     pub async fn shutdown(&self) -> Result<(), JsError> {
-        self._router
-            .shutdown()
-            .await
-            .map_err(|e| JsError::new(&e.to_string()))
+        self.router.shutdown().await.map_err(to_err)
     }
 }
 
@@ -178,8 +179,4 @@ impl Doc {
     pub async fn close(&self) -> Result<(), JsError> {
         self.inner.close().await.map_err(to_err)
     }
-}
-
-fn to_err<E: std::fmt::Display>(e: E) -> JsError {
-    JsError::new(&e.to_string())
 }

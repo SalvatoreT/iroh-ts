@@ -59,17 +59,29 @@ const chunk = await stream.recv.readChunk(4096);
 
 **Key behavior**: `acceptBi()` blocks until the opener writes to its `SendStream`. Your opener must write something before the accepter can proceed. The chat example sends a `"joined"` control message for this purpose.
 
-Use a length-prefixed protocol to frame messages over a stream:
+QUIC streams are byte streams, so messages need framing. The library ships
+length-prefixed framing helpers — use them instead of hand-rolling the
+protocol:
 
 ```ts
-async function writeMsg(send: SendStream, text: string) {
-  const bytes = new TextEncoder().encode(text);
-  const len = new Uint8Array(4);
-  new DataView(len.buffer).setUint32(0, bytes.length);
-  await send.writeAll(len);
-  await send.writeAll(bytes);
+import { writeFramed, readFramed, writeJson, readJson } from "@salvatoret/iroh";
+
+// Raw bytes
+await writeFramed(stream.send, new TextEncoder().encode("hello"));
+for await (const frame of readFramed(stream.recv)) {
+  console.log(new TextDecoder().decode(frame));
+}
+
+// Or JSON messages
+await writeJson(stream.send, { kind: "move", x: 3 });
+for await (const msg of readJson(stream.recv)) {
+  handle(msg);
 }
 ```
+
+Each frame is a 4-byte big-endian length followed by the payload, written as
+a single `writeAll` call. `readFramed` rejects frames over 16 MiB by default
+(`maxFrameBytes` option) and throws if the stream ends mid-frame.
 
 ### Datagrams (unreliable, unordered)
 
@@ -84,7 +96,7 @@ const data = await conn.readDatagram();
 const msg = JSON.parse(new TextDecoder().decode(data));
 ```
 
-Datagrams may be dropped or arrive out of order. They're simpler (no framing protocol needed) but unsuitable for data that must not be lost. The poker example uses datagrams because a dropped state update is corrected by the next one.
+Datagrams may be dropped or arrive out of order, so they're unsuitable for data that must not be lost. Don't use them for game-critical messages: the poker example originally sent deals and results as datagrams, and a single dropped datagram silently broke the game. It now uses framed streams for everything.
 
 ## Resilient Connection Patterns
 

@@ -9,3 +9,4 @@ export {
   DocEngine,
   Doc,
 } from "../crate/pkg/bundler/iroh_ts.js";
+export * from "./framing.js";

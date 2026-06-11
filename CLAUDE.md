@@ -33,10 +33,11 @@ export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
 
 1. **Rust WASM core** (`crate/src/`) — Rust modules (`endpoint.rs`, `addr.rs`, `blobs.rs`, `docs.rs`) use `wasm-bindgen` to expose classes to JS. Built twice by `wasm-pack`: once for Node.js (`crate/pkg/nodejs/`) and once for bundlers (`crate/pkg/bundler/`).
 
-2. **TypeScript re-exports** (`ts/`) — Three files, no logic:
-   - `node.ts` → re-exports from `crate/pkg/nodejs/`
-   - `browser.ts` → re-exports from `crate/pkg/bundler/`
+2. **TypeScript layer** (`ts/`) — Entry points plus one pure-TS utility module:
+   - `node.ts` → re-exports from `crate/pkg/nodejs/` + `framing.ts`
+   - `browser.ts` → re-exports from `crate/pkg/bundler/` + `framing.ts`
    - `index.ts` → default re-export (Node.js)
+   - `framing.ts` → length-prefixed message framing helpers (`writeFramed`, `readFramed`, `writeJson`, `readJson`) used by the examples
 
    `package.json` `exports` map routes consumers to the right entry point based on environment.
 
@@ -59,7 +60,7 @@ All WASM objects have `free()` and support `Symbol.dispose`. Call `free()` when 
 - `crate/` — Rust workspace member, compiled to WASM
 - `ts/` — TypeScript entry points (re-exports only)
 - `__test__/` — Vitest integration tests (30s timeout)
-- `examples/` — Deployable Cloudflare Workers apps (chat, poker); each has its own `wrangler.toml`
+- `examples/` — Example apps: Cloudflare Workers-deployable browser apps (chat, poker, debug — each has its own `wrangler.toml`), a browser-only p2p-chat, and a Node.js echo-server
 - `docs/` — GitHub Pages site
 - pnpm workspace: root + `examples/*`
 

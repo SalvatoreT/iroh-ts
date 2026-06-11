@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        # https://github.com/dtolnay/rust-toolchain/commit/3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crate/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('crate/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # Pinned: pnpm "latest" enables a minimum-release-age supply-chain
+      # policy that rejects lockfile entries published within 24h.
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.22.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - run: pnpm install
+
+      - run: pnpm build
+
+      # Integration tests create real iroh endpoints over n0 relays
+      - run: pnpm test
+
+      # Typecheck every example against the freshly built package
+      - run: pnpm typecheck

@@ -1,5 +1,7 @@
 use wasm_bindgen::prelude::*;
 
+use crate::to_err;
+
 /// Address information for an Iroh endpoint (ID + relay URL + direct addresses).
 #[wasm_bindgen]
 #[derive(Clone)]
@@ -41,8 +43,4 @@ impl From<&EndpointAddr> for iroh::EndpointAddr {
     fn from(addr: &EndpointAddr) -> Self {
         addr.inner.clone()
     }
-}
-
-fn to_err<E: std::fmt::Display>(e: E) -> JsError {
-    JsError::new(&e.to_string())
 }

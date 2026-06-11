@@ -1,9 +1,17 @@
 use wasm_bindgen::prelude::*;
 
+use crate::to_err;
+
 /// An in-memory blob store for content-addressable data.
 #[wasm_bindgen]
 pub struct BlobStore {
     store: iroh_blobs::store::mem::MemStore,
+}
+
+impl Default for BlobStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[wasm_bindgen]
@@ -53,8 +61,4 @@ impl BlobStore {
             .map_err(to_err)?;
         Ok(hashes.iter().map(|h| h.to_string()).collect())
     }
-}
-
-fn to_err<E: std::fmt::Display>(e: E) -> JsError {
-    JsError::new(&e.to_string())
 }
